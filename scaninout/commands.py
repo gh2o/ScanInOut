@@ -5,21 +5,17 @@ from .types import MemberInfoField, Member
 # MEMBER INFO FIELDS                   #
 ########################################
 
-class MemberInfoFieldField (Field):
-	python_type = MemberInfoField
-	json_type = dict
-
 class MemberInfoFieldAdd (Command):
 	class Request:
-		field = MemberInfoFieldField ()
+		field = MemberInfoField.Field ()
 	class Response:
-		field = MemberInfoFieldField ()
+		field = MemberInfoField.Field ()
 
 class MemberInfoFieldEdit (Command):
 	class Request:
-		field = MemberInfoFieldField ()
+		field = MemberInfoField.Field ()
 	class Response:
-		field = MemberInfoFieldField ()
+		field = MemberInfoField.Field ()
 
 class MemberInfoFieldDelete (Command):
 	class Request:
@@ -29,31 +25,27 @@ class MemberInfoFieldGet (Command):
 	class Request:
 		id = int
 	class Response:
-		field = MemberInfoFieldField ()
+		field = MemberInfoField.Field ()
 
 class MemberInfoFieldGetAll (Command):
 	class Response:
-		fields = ListField (MemberInfoFieldField ())
+		fields = ListField (MemberInfoField.Field ())
 
 ########################################
-# MEMBER                               #
+# MEMBERS                              #
 ########################################
-
-class MemberField (Field):
-	python_type = Member
-	json_type = dict
 
 class MemberAdd (Command):
 	class Request:
-		member = MemberField ()
+		member = Member.Field ()
 	class Response:
-		member = MemberField ()
+		member = Member.Field ()
 
 class MemberEdit (Command):
 	class Request:
-		member = MemberField ()
+		member = Member.Field ()
 	class Response:
-		member = MemberField ()
+		member = Member.Field ()
 
 class MemberDelete (Command):
 	class Request:
@@ -63,8 +55,14 @@ class MemberGet (Command):
 	class Request:
 		id = int
 	class Response:
-		member = MemberField ()
+		member = Member.Field ()
 
 class MemberGetAll (Command):
 	class Response:
-		members = ListField (MemberField ())
+		members = ListField (Member.Field ())
+
+########################################
+# ENUMERATE COMMANDS                   #
+########################################
+commands = dict ((name, cls) for name, cls in globals ().iteritems ()
+	if isinstance (cls, type) and issubclass (cls, Command) and cls is not Command)
