@@ -209,10 +209,6 @@ class FieldedObject (object):
 		if kwargs:
 			raise TypeError ("unknown arguments: %r" % kwargs.keys ())
 
-	def __getattr__ (self, x):
-
-		return object.__getattr__ (self, x)
-
 	def __setattr__ (self, x, val):
 
 		if x.startswith ("_sa_"):
@@ -236,57 +232,56 @@ class CommandError (Exception):
 
 class CommandContainer (object):
 
-	__slots__ = ["fields"]
-	Command = None
-	fields_dict = None
+	__slots__ = ["__fields"]
+	_cc_command = None
+	_cc_class = None
+	_cc_field = None
 
 	def __init__ (self, **kwargs):
-		if self.Command is None or self.fields_dict is None:
-			raise RuntimeError ("Command and fields_dict must be defined")
-		self.fields = FieldContainer (self.fields_dict)
-		for key, val in kwargs.iteritems ():
-			setattr (self.fields, key, val)
+		self.__fields = self._cc_class (**kwargs)
 	
+	@property
+	def fields (self):
+		return self.__fields
+
 	def create_request (self, **kwargs):
-		return self.Command.Request (**kwargs)
-	
+		return self._cc_command.Request (**kwargs)
+
 	def create_response (self, **kwargs):
-		return self.Command.Response (**kwargs)
-	
+		return self._cc_command.Response (**kwargs)
+
 	@classmethod
 	def decode_from_json (cls, obj):
-		ret = cls ()
-		for name, field in cls.fields_dict.iteritems ():
-			if name not in obj:
-				raise CommandError ("Field %r not found." % name)
-			val = field.json_to_python_validate (obj[name])
-			setattr (ret.fields, name, val)
+
+		class Dummy (CommandContainer):
+			def __init__ (self, *args, **kwargs):
+				pass
+
+		ret = Dummy ()
+		ret.__class__ = cls
+		ret.__fields = cls._cc_field.json_to_python_validate (obj)
 		return ret
 
 	def encode_to_json (self):
-		ret = {}
-		for name, field in self.fields_dict.iteritems ():
-			val = getattr (self.fields, name)
-			ret[name] = field.python_to_json_validate (val)
-		return ret
+		return self._cc_field.python_to_json_validate (self.__fields)
 
 class CommandMeta (type):
 
 	def __new__ (cls, name, bases, attrs):
-
 		ret = type.__new__ (cls, name, bases, attrs)
-
-		Request = type (name + "RequestCommandContainer", (CommandContainer,), {})
-		Request.Command = ret
-		Request.fields_dict = Field.filter_fields (attrs.get ("Request"))
-		ret.Request = Request
-
-		Response = type (name + "ResponseCommandContainer", (CommandContainer,), {})
-		Response.Command = ret
-		Response.fields_dict = Field.filter_fields (attrs.get ("Response"))
-		ret.Response = Response
-
+		ret.__build_command_container ("Request")
+		ret.__build_command_container ("Response")
 		return ret
+
+	def __build_command_container (self, rr):
+		fields = Field.filter_fields (getattr (self, rr, None))
+		klass = type (self.__name__ + rr + "Object", (FieldedObject,), fields)
+		container = type (self.__name__ + rr + "CommandContainer", (CommandContainer,), {
+			"_cc_command": self,
+			"_cc_class": klass,
+			"_cc_field": klass.Field (),
+		})
+		setattr (self, rr, container)
 
 class Command (object):
 	__metaclass__ = CommandMeta

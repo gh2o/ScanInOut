@@ -11,7 +11,7 @@ class Server (object):
 
 	def __init__ (self, dbpath):
 		self.dbpath = dbpath
-		self.db = sqlalchemy.create_engine ("sqlite:///" + dbpath)
+		self.db = sqlalchemy.create_engine ("sqlite:///" + dbpath, echo=True)
 		self.create_session = sqlalchemy.orm.sessionmaker (bind=self.db)
 		db_metadata.bind = self.db
 		db_metadata.create_all ()
@@ -85,8 +85,17 @@ class Server (object):
 			raise CommandError ("No handler found for command.")
 
 		request = cmdclass.Request.decode_from_json (fields)
-		response = handler (request, self.create_session ())
-		if not isinstance (response, cmdclass.Response):
-			raise CommandError ("Invalid response from handler.")
+		response = None
+		session = self.create_session ()
 
-		return response.encode_to_json ()
+		try:
+			response = handler (request, session)
+			if not isinstance (response, cmdclass.Response):
+				raise CommandError ("Invalid response from handler.")
+			encoded = response.encode_to_json ()
+			session.commit ()
+		except:
+			session.rollback ()
+			raise
+
+		return encoded

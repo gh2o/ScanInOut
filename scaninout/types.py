@@ -13,8 +13,6 @@ class Member (FieldedObject):
 	first_name = StringField ()
 	last_name = StringField ()
 
-	scan_time = DateTimeField (required=False)
-
 	info = DictField (default={})
 
 class Shift (FieldedObject):
@@ -23,4 +21,4 @@ class Shift (FieldedObject):
 
 	member_id = IntField ()
 	start_time = DateTimeField ()
-	end_time = DateTimeField ()
+	end_time = DateTimeField (required=False)

@@ -1,11 +1,11 @@
 import datetime
 from ..commands_base import CommandError
 from .. import commands
-from ..types import Member
+from ..types import Member, Shift
 from . import db
 
-def protected (func):
-	func.protected = True
+def public (func):
+	func.public = True
 	return func
 
 def handles (cmdclass):
@@ -19,47 +19,110 @@ def handles (cmdclass):
 # MEMBERS                              #
 ########################################
 
+@public
 @handles (commands.MemberAdd)
 def handle_MemberAdd (request, session):
 	member = request.fields.member
 	member.id = None
 	session.add (member)
-	session.commit ()
 	return request.create_response (member=member)
 
-@protected
 @handles (commands.MemberEdit)
 def handle_MemberEdit (request, session):
 	member = request.fields.member
 	if member.id is None:
 		raise CommandError ("id must be defined")
 	session.add (member)
-	session.commit ()
 	return request.create_response (member=member)
 
-@protected
 @handles (commands.MemberDelete)
 def handle_MemberDelete (request, session):
-	query = session.query (Member).filter (Member.id == request.fields.id)
-	if query.count () == 0:
+	obj = session.query (Member).get (request.fields.id)
+	if obj is None:
 		raise CommandError ("Member not found.")
-	query.delete ()
-	session.commit ()
+	session.delete (obj)
 	return request.create_response ()
 
-@protected
 @handles (commands.MemberGet)
 def handle_MemberGet (request, session):
-	obj = session.query (Member).filter (Member.id == request.fields.id).first ()
+	obj = session.query (Member).get (request.fields.id)
 	if obj is None:
 		raise CommandError ("Member not found.")
 	return request.create_response (member=obj)
 	
-@protected
 @handles (commands.MemberGetAll)
 def handle_MemberGetAll (request, session):
 	return request.create_response (
 		members = list (session.query (Member))
+	)
+
+@public
+@handles (commands.MemberScanInOut)
+def handle_MemberScanInOut (request, session):
+
+	member = session.query (Member).filter (Member.tag == request.fields.tag).first ()
+	if member is None:
+		raise CommandError ("Member not found.")
+
+	elapsed_hours = None
+
+	current_shift = (
+		session.query (Shift)
+			.join (Member)
+			.filter (Shift.expired == False)
+			.filter (Shift.end_time == None)
+			.order_by (Shift.start_time.desc ())
+			.first ()
+	)
+
+	if current_shift is None:
+		session.add (Shift (
+			member_id = member.id,
+			start_time = datetime.datetime.utcnow (),
+		))
+	else:
+		current_shift.end_time = datetime.datetime.utcnow ()
+		session.add (current_shift)
+		session.flush ()
+		elapsed_hours = current_shift.hours
+	
+	return request.create_response (
+		scanned_in = (current_shift is None),
+		elapsed_hours = elapsed_hours,
+	)
+
+	"""
+	if member.scan_time is None:
+		member.scan_time = datetime.datetime.utcnow ()
+	else:
+		shift = Shift (
+			member_id = member.id,
+			start_time = member.scan_time,
+			end_time = datetime.datetime.utcnow (),
+		)
+		session.add (shift)
+		session.flush ()
+		elapsed_hours = shift.hours
+		member.scan_time = None
+	
+	session.add (member)
+
+	return request.create_response (
+		scanned_in = (member.scan_time is not None),
+		elapsed_hours = elapsed_hours,
+	)
+	"""
+
+@handles (commands.MemberGetShifts)
+def handle_MemberGetShifts (request, session):
+
+	member = session.query (Member).get (request.fields.id)
+	if not member:
+		raise CommandError ("Member not found.")
+
+	return request.create_response (
+		hours = member.hours,
+		shifts = member.shifts
 	)
 
 ########################################

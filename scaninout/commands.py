@@ -1,5 +1,8 @@
-from .commands_base import Command, Field, ListField, DictField
-from .types import MemberInfoField, Member
+from .commands_base import (
+	Command, Field, ListField, DictField,
+	StringField, BoolField, IntField, FloatField
+)
+from .types import MemberInfoField, Member, Shift
 
 ########################################
 # MEMBER INFO FIELDS                   #
@@ -60,6 +63,20 @@ class MemberGet (Command):
 class MemberGetAll (Command):
 	class Response:
 		members = ListField (Member.Field ())
+
+class MemberScanInOut (Command):
+	class Request:
+		tag = StringField ()
+	class Response:
+		elapsed_hours = FloatField (required=False)
+		scanned_in = BoolField ()
+
+class MemberGetShifts (Command):
+	class Request:
+		id = int
+	class Response:
+		hours = float
+		shifts = ListField (Shift.Field ())
 
 ########################################
 # ENUMERATE COMMANDS                   #

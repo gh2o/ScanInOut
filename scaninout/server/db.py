@@ -3,12 +3,17 @@ import datetime
 
 from sqlalchemy import (
 	MetaData, Table, Column,
-	ForeignKey, Integer, String, DateTime, LargeBinary,
-	TypeDecorator
+	ForeignKey, Float, Integer, String, DateTime, LargeBinary,
+	TypeDecorator,
+	extract, cast, case, func,
+	event
 )
-from sqlalchemy.orm import mapper
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import mapper, relationship, column_property, Query
 
 from ..types import MemberInfoField, Member, Shift
+
+EXPIRES_CUTOFF_TIME = 4
 
 metadata = MetaData ()
 
@@ -19,13 +24,26 @@ class JSON (TypeDecorator):
 	def process_result_value (self, value, dialect):
 		return json.loads (value) if value is not None else None
 
-def build_table (tbname, focls, *mapper_args, **mapper_kwargs):
+def build_table (tbname, focls, column_args={}, column_kwargs={}, **kwargs):
+
 	columns = []
+
+	column_args = column_args.copy ()
+	column_kwargs = column_kwargs.copy ()
+
 	for name in focls._fields_keys:
+
 		field = focls._fields[name]
-		ckwargs = {"nullable": not field.required}
-		ctype = None
 		ptype = field.python_type
+
+		cargs = column_args.pop (name, [])
+		ckwargs = column_kwargs.pop (name, {})
+
+		ckwargs.setdefault ("default", field.clone_default ())
+		ckwargs.setdefault ("nullable", not field.required)
+
+		ctype = None
+
 		if ptype is int:
 			ctype = Integer
 			ckwargs["primary_key"] = (name == 'id')
@@ -37,45 +55,83 @@ def build_table (tbname, focls, *mapper_args, **mapper_kwargs):
 			ctype = DateTime
 		else:
 			raise TypeError ("unknown python_type %r" % ptype)
-		columns.append (Column (name, ctype, **ckwargs))
+
+		columns.append (Column (name, ctype, *cargs, **ckwargs))
+	
+	if column_args:
+		raise ValueError ("unknown column_args keys: %r" % column_args.keys ())
+	if column_kwargs:
+		raise ValueError ("unknown column_kwargs keys: %r" % column_args.keys ())
+
 	table = Table (tbname, metadata, *columns)
-	mapper (focls, table, *mapper_args, **mapper_kwargs)
+	table.mapper = mapper (focls, table, **kwargs)
 	return table
 
 member_info_fields = build_table ("member_info_fields", MemberInfoField)
-members = build_table ("members", Member)
-shifts = build_table ("shifts", Shift)
 
-"""
-class MemberInfoField (Base):
+members = build_table ("members", Member,
+	column_kwargs={
+		"tag": {"unique": True, "index": True},
+	},
+	properties={
+		"shifts": relationship (Shift, backref="member", lazy="select")
+	},
+)
 
-	__tablename__ = "member_info_fields"
+shifts = build_table ("shifts", Shift,
+	column_args={
+		"member_id": [ForeignKey (Member.id)],
+	},
+	column_kwargs={
+		"member_id": {"index": True},
+		"start_time": {"index": True},
+		"end_time": {"index": True},
+	},
+)
 
-	id = Column (Integer, primary_key=True)
-	name = Column (String, nullable=False)
+def utc_timestamp_to_local_timestamp (ts):
+	return func.datetime (ts, 'localtime')
 
-class Member (Base):
+def local_timestamp_to_utc_timestamp (ts):
+	return func.datetime (ts, 'utc')
 
-	__tablename__ = "members"
+def utc_timestamp_to_epoch (ts):
+	return extract ('epoch', ts)
 
-	id = Column (Integer, primary_key=True)
-	tag = Column (String, nullable=False, unique=True, index=True)
+def epoch_to_utc_timestamp (ts):
+	return func.datetime (ts, 'unixepoch')
 
-	first_name = Column (String, nullable=False)
-	last_name = Column (String, nullable=False)
-	name = column_property (first_name + " " + last_name)
+def local_timestamp_to_epoch (ts):
+	return extract ('epoch', local_timestamp_to_utc_timestamp (ts))
 
-	scan_time = Column (DateTime)
+def epoch_to_local_timestamp (ts):
+	return func.datetime (ts, 'unixepoch', 'localtime')
 
-	shifts = relationship ("Shift", backref="member")
+shifts.mapper.add_properties ({
+	"hours": column_property (
+		cast (case (
+			whens=[(Shift.end_time == None, 0.0)],
+			else_=(
+				utc_timestamp_to_epoch (Shift.end_time) -
+				utc_timestamp_to_epoch (Shift.start_time)
+			) / 3600.
+		), Float ())
+	),
+	"expired": column_property (
+		(Shift.end_time == None) &
+		(
+			func.date (epoch_to_local_timestamp (utc_timestamp_to_epoch (func.now ()) - (EXPIRES_CUTOFF_TIME * 3600))) !=
+			func.date (epoch_to_local_timestamp (utc_timestamp_to_epoch (Shift.start_time) - (EXPIRES_CUTOFF_TIME * 3600)))
+		)
+	),
+})
 
-class Shift (Base):
+members.mapper.add_property ("hours", column_property (
+	Query ([func.coalesce (func.sum (Shift.hours), 0.0)]).join (Member).label ("hours")
+))
 
-	__tablename__ = "shifts"
-
-	id = Column (Integer, primary_key=True)
-	member_id = Column (Integer, ForeignKey (Member.id), nullable=False, index=True)
-
-	start_time = Column (DateTime, nullable=False)
-	end_time = Column (DateTime, nullable=False)
-"""
+@event.listens_for (Engine, "connect")
+def sqlite_enable_foreign_keys (conn, record):
+	cursor = conn.cursor ()
+	cursor.execute ("PRAGMA foreign_keys=ON")
+	cursor.close ()
