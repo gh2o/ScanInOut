@@ -4,6 +4,9 @@ from .commands_base import (
 )
 from .types import MemberInfoField, Member, Shift
 
+class Ping (Command):
+	pass
+
 ########################################
 # MEMBER INFO FIELDS                   #
 ########################################
@@ -81,5 +84,7 @@ class MemberGetShifts (Command):
 ########################################
 # ENUMERATE COMMANDS                   #
 ########################################
-commands = dict ((name, cls) for name, cls in globals ().iteritems ()
-	if isinstance (cls, type) and issubclass (cls, Command) and cls is not Command)
+commands = dict (
+	(name, cls) for name, cls in globals ().iteritems ()
+		if isinstance (cls, type) and issubclass (cls, Command) and cls is not Command
+)

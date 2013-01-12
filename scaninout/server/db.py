@@ -34,7 +34,7 @@ def build_table (tbname, focls, column_args={}, column_kwargs={}, **kwargs):
 	for name in focls._fields_keys:
 
 		field = focls._fields[name]
-		ptype = field.python_type
+		ptype = field.actual_type
 
 		cargs = column_args.pop (name, [])
 		ckwargs = column_kwargs.pop (name, {})
@@ -54,7 +54,7 @@ def build_table (tbname, focls, column_args={}, column_kwargs={}, **kwargs):
 		elif ptype is datetime.datetime:
 			ctype = DateTime
 		else:
-			raise TypeError ("unknown python_type %r" % ptype)
+			raise TypeError ("unknown actual_type %r" % ptype)
 
 		columns.append (Column (name, ctype, *cargs, **ckwargs))
 	
@@ -67,7 +67,11 @@ def build_table (tbname, focls, column_args={}, column_kwargs={}, **kwargs):
 	table.mapper = mapper (focls, table, **kwargs)
 	return table
 
-member_info_fields = build_table ("member_info_fields", MemberInfoField)
+member_info_fields = build_table ("member_info_fields", MemberInfoField,
+	column_kwargs={
+		"name": {"unique": True, "index": True},
+	},
+)
 
 members = build_table ("members", Member,
 	column_kwargs={

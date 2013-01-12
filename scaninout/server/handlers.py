@@ -3,6 +3,7 @@ from ..commands_base import CommandError
 from .. import commands
 from ..types import Member, Shift
 from . import db
+from sqlalchemy.exc import IntegrityError
 
 def public (func):
 	func.public = True
@@ -20,39 +21,44 @@ def handles (cmdclass):
 ########################################
 
 @public
+@handles (commands.Ping)
+def handle_Ping (request, session):
+	return request.response_class ()
+
+@public
 @handles (commands.MemberAdd)
 def handle_MemberAdd (request, session):
-	member = request.fields.member
+	member = request.member
 	member.id = None
 	session.add (member)
-	return request.create_response (member=member)
+	return request.response_class (member=member)
 
 @handles (commands.MemberEdit)
 def handle_MemberEdit (request, session):
-	member = request.fields.member
+	member = request.member
 	if member.id is None:
 		raise CommandError ("id must be defined")
 	session.add (member)
-	return request.create_response (member=member)
+	return request.response_class (member=member)
 
 @handles (commands.MemberDelete)
 def handle_MemberDelete (request, session):
-	obj = session.query (Member).get (request.fields.id)
+	obj = session.query (Member).get (request.id)
 	if obj is None:
 		raise CommandError ("Member not found.")
 	session.delete (obj)
-	return request.create_response ()
+	return request.response_class ()
 
 @handles (commands.MemberGet)
 def handle_MemberGet (request, session):
-	obj = session.query (Member).get (request.fields.id)
+	obj = session.query (Member).get (request.id)
 	if obj is None:
 		raise CommandError ("Member not found.")
-	return request.create_response (member=obj)
-	
+	return request.response_class (member=obj)
+
 @handles (commands.MemberGetAll)
 def handle_MemberGetAll (request, session):
-	return request.create_response (
+	return request.response_class (
 		members = list (session.query (Member))
 	)
 
@@ -60,7 +66,7 @@ def handle_MemberGetAll (request, session):
 @handles (commands.MemberScanInOut)
 def handle_MemberScanInOut (request, session):
 
-	member = session.query (Member).filter (Member.tag == request.fields.tag).first ()
+	member = session.query (Member).filter (Member.tag == request.tag).first ()
 	if member is None:
 		raise CommandError ("Member not found.")
 
@@ -86,7 +92,7 @@ def handle_MemberScanInOut (request, session):
 		session.flush ()
 		elapsed_hours = current_shift.hours
 	
-	return request.create_response (
+	return request.response_class (
 		scanned_in = (current_shift is None),
 		elapsed_hours = elapsed_hours,
 	)
@@ -94,11 +100,11 @@ def handle_MemberScanInOut (request, session):
 @handles (commands.MemberGetShifts)
 def handle_MemberGetShifts (request, session):
 
-	member = session.query (Member).get (request.fields.id)
+	member = session.query (Member).get (request.id)
 	if not member:
 		raise CommandError ("Member not found.")
 
-	return request.create_response (
+	return request.response_class (
 		hours = member.hours,
 		shifts = member.shifts
 	)

@@ -1,0 +1,8 @@
+#!/usr/bin/env python2
+
+from scaninout.client import Client
+from scaninout.types import *
+
+client = Client ()
+
+print client.member_get_all ()

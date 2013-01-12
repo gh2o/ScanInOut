@@ -1,11 +1,12 @@
+import re
 from collections import OrderedDict
 import copy
 import datetime
 
 class Field (object):
 
-	python_type = object
-	json_type = object
+	actual_type = object
+	base_type = object
 
 	__count = 0
 
@@ -18,28 +19,28 @@ class Field (object):
 	def clone_default (self):
 		return copy.deepcopy (self.__default)
 
-	def python_to_json (self, x):
+	def actual_to_base (self, x):
 		return x
 
-	def json_to_python (self, x):
+	def base_to_actual (self, x):
 		return x
 
-	def python_to_json_validate (self, x):
+	def actual_to_base_validate (self, x):
 		if x is not None:
-			if not isinstance (x, self.python_type):
-				raise TypeError ("arg to python_to_json must be of type %r" % self.python_type)
-			x = self.python_to_json (x)
-			if not isinstance (x, self.json_type):
-				raise TypeError ("python_to_json must return of type %r" % self.json_type)
+			if not isinstance (x, self.actual_type):
+				raise TypeError ("arg to actual_to_base must be of type %r" % self.actual_type)
+			x = self.actual_to_base (x)
+			if not isinstance (x, self.base_type):
+				raise TypeError ("actual_to_base must return of type %r" % self.base_type)
 		return x
 
-	def json_to_python_validate (self, x):
+	def base_to_actual_validate (self, x):
 		if x is not None:
-			if not isinstance (x, self.json_type):
-				raise TypeError ("input to json_to_python must be of type %r" % self.json_type)
-			x = self.json_to_python (x)
-			if not isinstance (x, self.python_type):
-				raise TypeError ("json_to_python must return of type %r" % self.python_type)
+			if not isinstance (x, self.base_type):
+				raise TypeError ("input to base_to_actual must be of type %r" % self.base_type)
+			x = self.base_to_actual (x)
+			if not isinstance (x, self.actual_type):
+				raise TypeError ("base_to_actual must return of type %r" % self.actual_type)
 		return x
 
 	default_fields = {}
@@ -62,69 +63,69 @@ class Field (object):
 		return ret
 
 class BoolField (Field):
-	python_type = bool
-	json_type = bool
+	actual_type = bool
+	base_type = bool
 
 class IntField (Field):
-	python_type = int
-	json_type = int
+	actual_type = int
+	base_type = int
 
 class FloatField (Field):
-	python_type = float
-	json_type = float
+	actual_type = float
+	base_type = float
 
 class StringField (Field):
-	python_type = basestring
-	json_type = basestring
+	actual_type = basestring
+	base_type = basestring
 
 class DateTimeField (Field):
 	FORMAT = '%Y-%m-%dT%H:%M:%SZ'
-	python_type = datetime.datetime
-	json_type = basestring
-	def python_to_json (self, x):
+	actual_type = datetime.datetime
+	base_type = basestring
+	def actual_to_base (self, x):
 		return x.strftime (self.FORMAT)
-	def json_to_python (self, x):
+	def base_to_actual (self, x):
 		return datetime.datetime.strptime (x, self.FORMAT)
 
 for f in [BoolField, IntField, FloatField, StringField, DateTimeField]:
-	Field.default_fields[f.python_type] = f ()
+	Field.default_fields[f.actual_type] = f ()
 	del f
 
 class ListField (Field):
-	python_type = list
-	json_type = list
+	actual_type = list
+	base_type = list
 	def __init__ (self, subfield=None, **kwargs):
 		Field.__init__ (self, **kwargs)
 		self.subfield = Field.to_field (subfield)
-	def python_to_json (self, x):
-		return [self.subfield.python_to_json_validate (q) for q in x]
-	def json_to_python (self, x):
-		return [self.subfield.json_to_python_validate (q) for q in x]
+	def actual_to_base (self, x):
+		return [self.subfield.actual_to_base_validate (q) for q in x]
+	def base_to_actual (self, x):
+		return [self.subfield.base_to_actual_validate (q) for q in x]
 
 class DictField (Field):
-	python_type = dict
-	json_type = dict
+	actual_type = dict
+	base_type = dict
 	def __init__ (self, keyfield=basestring, valfield=None, **kwargs):
 		Field.__init__ (self, **kwargs)
 		self.keyfield = Field.to_field (keyfield)
 		self.valfield = Field.to_field (valfield)
-	def python_to_json (self, x):
+	def actual_to_base (self, x):
 		if not x:
 			return {}
 		keys, vals = zip (*(x.iteritems ()))
-		keys = [self.keyfield.python_to_json_validate (q) for q in keys]
-		vals = [self.valfield.python_to_json_validate (q) for q in vals]
+		keys = [self.keyfield.actual_to_base_validate (q) for q in keys]
+		vals = [self.valfield.actual_to_base_validate (q) for q in vals]
 		return dict (zip (key, vals))
-	def json_to_python (self, x):
+	def base_to_actual (self, x):
 		if not x:
 			return {}
 		keys, vals = zip (*(x.iteritems ()))
-		keys = [self.keyfield.json_to_python_validate (q) for q in keys]
-		vals = [self.valfield.json_to_python_validate (q) for q in vals]
+		keys = [self.keyfield.base_to_actual_validate (q) for q in keys]
+		vals = [self.valfield.base_to_actual_validate (q) for q in vals]
 		return dict (zip (key, vals))
 
 for f in [ListField, DictField]:
-	Field.default_fields[f.python_type] = f ()
+	Field.default_fields[f.actual_type] = f ()
 	del f
 
 class FieldContainer (object):
@@ -153,51 +154,49 @@ class FieldContainer (object):
 		if key not in self.__fielddict:
 			raise AttributeError ("Key %r not valid in field dictionary." % key)
 		field = self.__fielddict[key]
-		if val is not None and not isinstance (val, field.python_type):
-			raise ValueError ("Value for %r is not of type %r." % (key, field.python_type))
+		if val is not None and not isinstance (val, field.actual_type):
+			raise ValueError ("Value for %r is not of type %r." % (key, field.actual_type))
 
 		self.__data[key] = val
 
 class FieldedObjectField (Field):
 
-	# python_type must be set
-	python_type = None
-	json_type = dict
+	# actual_type must be set
+	actual_type = None
+	base_type = dict
 
-	def python_to_json (self, x):
+	def actual_to_base (self, x):
 		ret = {}
-		for name, field in self.python_type._fields.iteritems ():
-			ret[name] = field.python_to_json_validate (getattr (x, name))
+		for name, field in self.actual_type._fields.iteritems ():
+			ret[name] = field.actual_to_base_validate (getattr (x, name))
 		return ret
 
-	def json_to_python (self, x):
+	def base_to_actual (self, x):
 		kwargs = {}
-		for name, field in self.python_type._fields.iteritems ():
-			value = field.json_to_python_validate (x.get (name, field.clone_default ()))
+		for name, field in self.actual_type._fields.iteritems ():
+			value = field.base_to_actual_validate (x.get (name, field.clone_default ()))
 			if field.required and value is None:
 				raise KeyError ("Required field %r not found." % name)
 			kwargs[name] = value
-		return self.python_type (**kwargs)
+		return self.actual_type (**kwargs)
 
 class FieldedObjectMeta (type):
 
-	def __new__ (cls, name, bases, attrs):
+	def __init__ (self, name, bases, attrs):
 
-		fields_keys = attrs["_fields_keys"] = []
-		fields = attrs["_fields"] = {}
+		fields_keys = self._fields_keys = []
+		fields = self._fields = {}
 
-		for key, val in attrs.items ():
+		for key, val in vars (self).items ():
 			if isinstance (val, Field):
 				fields[key] = val
-				del attrs[key]
+				delattr (self, key)
 
 		fields_keys[:] = fields.keys ()
 		fields_keys.sort (key=lambda k: fields[k].order)
 
-		ret = type.__new__ (cls, name, bases, attrs)
-		ret.Field = type (name + "Field", (FieldedObjectField,), {"python_type": ret})
-		return ret
-	
+		self.Field = type (name + "Field", (FieldedObjectField,), {"actual_type": self})
+
 class FieldedObject (object):
 
 	__metaclass__ = FieldedObjectMeta
@@ -220,69 +219,49 @@ class FieldedObject (object):
 
 		if field.required and val is None:
 			raise TypeError ("attribute %r for object %r cannot be None" % (x, self))
-		if val is not None and not isinstance (val, field.python_type):
-			raise TypeError ("attribute %r must be of type %r, not %r" % (x, field.python_type, type (val)))
+		if val is not None and not isinstance (val, field.actual_type):
+			raise TypeError ("attribute %r must be of type %r, not %r" % (x, field.actual_type, type (val)))
 
 		object.__setattr__ (self, x, val)
 
-class CommandError (Exception):
+class CommandError (RuntimeError):
 	def __init__ (self, message):
 		Exception.__init__ (self, message)
 		self.message = message
 
-class CommandContainer (object):
-
-	__slots__ = ["__fields"]
-	_cc_command = None
-	_cc_class = None
-	_cc_field = None
-
-	def __init__ (self, **kwargs):
-		self.__fields = self._cc_class (**kwargs)
-	
-	@property
-	def fields (self):
-		return self.__fields
-
-	def create_request (self, **kwargs):
-		return self._cc_command.Request (**kwargs)
-
-	def create_response (self, **kwargs):
-		return self._cc_command.Response (**kwargs)
-
-	@classmethod
-	def decode_from_json (cls, obj):
-
-		class Dummy (CommandContainer):
-			def __init__ (self, *args, **kwargs):
-				pass
-
-		ret = Dummy ()
-		ret.__class__ = cls
-		ret.__fields = cls._cc_field.json_to_python_validate (obj)
-		return ret
-
-	def encode_to_json (self):
-		return self._cc_field.python_to_json_validate (self.__fields)
-
 class CommandMeta (type):
 
-	def __new__ (cls, name, bases, attrs):
-		ret = type.__new__ (cls, name, bases, attrs)
-		ret.__build_command_container ("Request")
-		ret.__build_command_container ("Response")
-		return ret
+	def __init__ (self, name, bases, attrs):
 
-	def __build_command_container (self, rr):
-		fields = Field.filter_fields (getattr (self, rr, None))
-		klass = type (self.__name__ + rr + "Object", (FieldedObject,), fields)
-		container = type (self.__name__ + rr + "CommandContainer", (CommandContainer,), {
-			"_cc_command": self,
-			"_cc_class": klass,
-			"_cc_field": klass.Field (),
-		})
-		setattr (self, rr, container)
+		type.__init__ (self, name, bases, attrs)
+
+		self.__build_container ("Request", attrs)
+		self.__build_container ("Response", attrs)
+		self.Request.response_class = self.Response
+		self.Response.request_class = self.Request
+		self.request_field = self.Request.Field ()
+		self.response_field = self.Response.Field ()
+
+	def __build_container (self, rr, attrs):
+		foattrs = Field.filter_fields (attrs.get (rr))
+		klass = type (self.__name__ + rr, (FieldedObject,), foattrs)
+		setattr (self, rr, klass)
+	
+	def __call__ (self, *args, **kwargs):
+		raise TypeError ("cannot create %r instances" % self.__name__)
+
+	def decode_request (self, x):
+		return self.request_field.base_to_actual_validate (x)
+
+	def encode_request (self, x):
+		return self.request_field.actual_to_base_validate (x)
+
+	def decode_response (self, x):
+		return self.response_field.base_to_actual_validate (x)
+
+	def encode_response (self, x):
+		return self.response_field.actual_to_base_validate (x)
 
 class Command (object):
-	__metaclass__ = CommandMeta
 
+	__metaclass__ = CommandMeta

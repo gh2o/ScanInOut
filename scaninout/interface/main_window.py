@@ -1,13 +1,14 @@
 import datetime
 from gi.repository import GLib, GObject, Gdk, Gtk
 from .ui import BuilderWindow, WeakFunctionWrapper, WeakSignalWrapper
+from . import client
 
 class MainWindowScanner (GObject.GObject):
 
 	__gsignals__ = {
-		"scanner-added": (GObject.SIGNAL_RUN_FIRST, None, []),
-		"scanner-removed": (GObject.SIGNAL_RUN_LAST, None, []),
-		"scanner-scanned": (GObject.SIGNAL_RUN_LAST, bool, [str], GObject.signal_accumulator_true_handled),
+		"attach": (GObject.SIGNAL_RUN_FIRST, None, []),
+		"detach": (GObject.SIGNAL_RUN_LAST, None, []),
+		"scan": (GObject.SIGNAL_RUN_LAST, bool, [str], GObject.signal_accumulator_true_handled),
 	}
 
 	def __init__ (self, window):
@@ -32,6 +33,10 @@ class MainWindowScanner (GObject.GObject):
 		devman = self.window.get_display ().get_device_manager ()
 		for device in devman.list_devices (Gdk.DeviceType.SLAVE):
 			self.device_added (devman, device)
+	
+	@property
+	def attached (self):
+		return len (self.scanners) > 0
 	
 	def window_mapped (self, window, event):
 		self.gdkwindow = window.get_window ()
@@ -66,14 +71,14 @@ class MainWindowScanner (GObject.GObject):
 			self.scanners.add (device)
 			self._grab (device)
 			if len (self.scanners) == 1:
-				self.emit ("scanner-added")
+				self.emit ("attach")
 
 	def device_removed (self, devman, device):
 		if device in self.scanners:
 			self._ungrab (device)
 			self.scanners.remove (device)
 			if len (self.scanners) == 0:
-				self.emit ("scanner-removed")
+				self.emit ("detach")
 
 	def _grab (self, device):
 
@@ -95,7 +100,7 @@ class MainWindowScanner (GObject.GObject):
 
 	def process_key (self, key):
 		if key in ['\r', '\n', '\r\n']:
-			self.emit ("scanner-scanned", ''.join (self.buffer))
+			self.emit ("scan", ''.join (self.buffer))
 			del self.buffer[:]
 		else:
 			self.buffer.append (key)
@@ -109,15 +114,15 @@ class MainWindow (BuilderWindow):
 
 		BuilderWindow.__init__ (self)
 
-		self.scanner_removed ()
+		self.scanner_detached ()
 		self.scanner = MainWindowScanner (self)
-		WeakSignalWrapper (self.scanner, "scanner-added", self.scanner_added)
-		WeakSignalWrapper (self.scanner, "scanner-removed", self.scanner_removed)
-		WeakSignalWrapper (self.scanner, "scanner-scanned", self.scanner_scanned)
+		WeakSignalWrapper (self.scanner, "attach", self.scanner_attached)
+		WeakSignalWrapper (self.scanner, "detach", self.scanner_detached)
+		WeakSignalWrapper (self.scanner, "scan", self.scanner_scanned)
 		self.scanner.enumerate ()
 
 		self.time_format = self.objects.time_label.get_text ()
-		self.tick ()
+		GLib.idle_add (lambda: self.tick () and False)
 		GLib.timeout_add (250, WeakFunctionWrapper (self.tick))
 
 		self.objects.name_label.set_text ("")
@@ -127,16 +132,25 @@ class MainWindow (BuilderWindow):
 			self.actions_quit_activated)
 
 	def tick (self):
+
 		self.objects.time_label.set_text (datetime.datetime.now ().strftime (
 			"%A, %B %d, %Y\n%I:%M:%S %p"
 		))
+
+		try:
+			client.ping ()
+		except IOError:
+			self.objects.lower_label.set_markup ('<span foreground="red">Cannot connect to server.</span>')
+		else:
+			self.objects.lower_label.set_markup ('Remember to sign out!')
+
 		return True
 
-	def scanner_added (self):
-		self.objects.instruction_label.set_markup ('Scan your ID now.')
+	def scanner_attached (self):
+		self.objects.upper_label.set_markup ('Scan your ID now.')
 
-	def scanner_removed (self):
-		self.objects.instruction_label.set_markup ('<span foreground="red">No scanner found.</span>')
+	def scanner_detached (self):
+		self.objects.upper_label.set_markup ('<span foreground="red">No scanner found.</span>')
 
 	def scanner_scanned (self, data):
 		print repr (data)

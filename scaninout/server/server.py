@@ -39,14 +39,12 @@ class Server (object):
 
 				if not isinstance (obj, dict):
 					raise ferr
-				if not ("command" in obj and "fields" in obj):
-					raise ferr
 
-				command = obj["command"]
+				command = obj.get ("command")
 				if not isinstance (command, basestring):
 					raise ferr
 
-				fields = obj["fields"]
+				fields = obj.get ("fields")
 				if not isinstance (fields, dict):
 					raise ferr
 
@@ -84,7 +82,7 @@ class Server (object):
 		if not handler:
 			raise CommandError ("No handler found for command.")
 
-		request = cmdclass.Request.decode_from_json (fields)
+		request = cmdclass.decode_request (fields)
 		response = None
 		session = self.create_session ()
 
@@ -92,7 +90,7 @@ class Server (object):
 			response = handler (request, session)
 			if not isinstance (response, cmdclass.Response):
 				raise CommandError ("Invalid response from handler.")
-			encoded = response.encode_to_json ()
+			encoded = cmdclass.encode_response (response)
 			session.commit ()
 		except:
 			session.rollback ()
