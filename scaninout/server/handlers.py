@@ -109,6 +109,14 @@ def handle_MemberGetShifts (request, session):
 		shifts = member.shifts
 	)
 
+@public
+@handles (commands.MemberCheckTag)
+def handle_MemberCheckTag (request, session):
+	member = session.query (Member).filter (Member.tag == request.tag).first ()
+	return request.response_class (
+		exists = (member is not None)
+	)
+
 ########################################
 # ENUMERATE HANDLERS                   #
 ########################################

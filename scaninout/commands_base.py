@@ -187,8 +187,10 @@ class FieldedObjectMeta (type):
 		fields_keys = self._fields_keys = []
 		fields = self._fields = {}
 
-		for key, val in vars (self).items ():
+		for key, val in attrs.items ():
 			if isinstance (val, Field):
+				if key.startswith ("_"):
+					raise "field with underscore found (%s)!" % key
 				fields[key] = val
 				delattr (self, key)
 
@@ -223,7 +225,7 @@ class FieldedObject (object):
 			raise TypeError ("attribute %r must be of type %r, not %r" % (x, field.actual_type, type (val)))
 
 		object.__setattr__ (self, x, val)
-
+	
 class CommandError (RuntimeError):
 	def __init__ (self, message):
 		Exception.__init__ (self, message)

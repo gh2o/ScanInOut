@@ -81,6 +81,12 @@ class MemberGetShifts (Command):
 		hours = float
 		shifts = ListField (Shift.Field ())
 
+class MemberCheckTag (Command):
+	class Request:
+		tag = StringField ()
+	class Response:
+		exists = BoolField ()
+
 ########################################
 # ENUMERATE COMMANDS                   #
 ########################################

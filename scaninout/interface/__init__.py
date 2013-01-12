@@ -31,6 +31,7 @@ def main (args):
 
 	old_excepthook = sys.excepthook
 	def new_excepthook (tp, val, tb):
+		old_excepthook (tp, val, tb)
 		dialog = Gtk.MessageDialog (buttons=Gtk.ButtonsType.CLOSE, message_format="Error occurred!")
 		dialog.format_secondary_text ("%s: %s" % (tp.__name__, val))
 		tbbuf = Gtk.TextBuffer ()
@@ -46,7 +47,6 @@ def main (args):
 		dialog.show_all ()
 		dialog.run ()
 		dialog.destroy ()
-		return old_excepthook (tp, val, tb)
 	sys.excepthook = new_excepthook
 
 	### SET UP CLIENT AND PING

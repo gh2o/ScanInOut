@@ -5,6 +5,19 @@ from . import DEFAULT_SOCKET_PATH
 from . import commands
 from .commands_base import CommandError
 
+def camelize (name):
+	buf = []
+	nextup = True
+	for index, char in enumerate (name):
+		if nextup:
+			buf.append (char.upper ())
+			nextup = False
+		elif char == '_':
+			nextup = True
+		else:
+			buf.append (char)
+	return ''.join (buf)
+
 class ClientFunction (object):
 
 	def __init__ (self, client, cmdclass):
@@ -28,7 +41,7 @@ class Client (object):
 	
 	def __getattr__ (self, name):
 		try:
-			cmdclass = commands.commands_underscored[name]
+			cmdclass = commands.commands[camelize(name)]
 		except KeyError:
 			raise AttributeError
 		return ClientFunction (self, cmdclass)
@@ -42,7 +55,7 @@ class Client (object):
 
 		senddata = json.dumps ({
 			"command": cmdclass.__name__,
-			"fields": request.encode_to_json (),
+			"fields": cmdclass.encode_request (request),
 		})
 
 		try:
@@ -57,4 +70,4 @@ class Client (object):
 		if not itm["success"]:
 			raise CommandError ("command error: %s" % itm["message"])
 
-		return cmdclass.Response.decode_from_json (itm["fields"])
+		return cmdclass.decode_response (itm["fields"])
