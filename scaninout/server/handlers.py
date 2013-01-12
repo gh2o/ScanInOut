@@ -91,28 +91,6 @@ def handle_MemberScanInOut (request, session):
 		elapsed_hours = elapsed_hours,
 	)
 
-	"""
-	if member.scan_time is None:
-		member.scan_time = datetime.datetime.utcnow ()
-	else:
-		shift = Shift (
-			member_id = member.id,
-			start_time = member.scan_time,
-			end_time = datetime.datetime.utcnow (),
-		)
-		session.add (shift)
-		session.flush ()
-		elapsed_hours = shift.hours
-		member.scan_time = None
-	
-	session.add (member)
-
-	return request.create_response (
-		scanned_in = (member.scan_time is not None),
-		elapsed_hours = elapsed_hours,
-	)
-	"""
-
 @handles (commands.MemberGetShifts)
 def handle_MemberGetShifts (request, session):
 
