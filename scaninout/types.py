@@ -25,6 +25,10 @@ class Member (FieldedObject):
 
 	info = DictField (default={})
 
+	@property
+	def name (self):
+		return "%s %s" % (self.first_name, self.last_name)
+
 class Shift (FieldedObject):
 
 	id = IntField (required=False)

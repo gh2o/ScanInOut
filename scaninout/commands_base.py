@@ -11,11 +11,14 @@ class Field (object):
 	actual_type = object
 	base_type = object
 
+	name = "<unknown>"
 	__count = 0
 
 	def __init__ (self, required=True, default=None):
+
 		self.required = required
 		self.__default = default
+
 		self.order = Field.__count
 		Field.__count += 1
 	
@@ -50,11 +53,11 @@ class Field (object):
 	def validate (self, x):
 		if x is None:
 			if self.required:
-				raise ValidationError ("field cannot be empty or None")
+				raise ValidationError ("field %r cannot be empty or None" % self.name)
 		else:
 			if not isinstance (x, self.actual_type):
-				raise ValidationError ("field should be of type %r, not %r" %
-					(self.actual_type, type (x)))
+				raise ValidationError ("field %r should be of type %r, not %r" %
+					(self.name, self.actual_type, type (x)))
 			self.validate_impl (x)
 
 	default_fields = {}
@@ -199,6 +202,7 @@ class FieldedObjectMeta (type):
 			if isinstance (val, Field):
 				if key.startswith ("_"):
 					raise "field with underscore found (%s)!" % key
+				val.name = key
 				fields[key] = val
 				delattr (self, key)
 

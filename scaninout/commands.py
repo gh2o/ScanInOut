@@ -71,8 +71,10 @@ class MemberScanInOut (Command):
 	class Request:
 		tag = StringField ()
 	class Response:
-		elapsed_hours = FloatField (required=False)
+		member = Member.Field ()
 		scanned_in = BoolField ()
+		elapsed_hours = FloatField (required=False)
+		total_hours = FloatField (required=False)
 
 class MemberGetShifts (Command):
 	class Request:

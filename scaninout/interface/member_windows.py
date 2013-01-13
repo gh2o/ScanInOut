@@ -1,6 +1,7 @@
 from gi.repository import Gtk
 from ..types import Member
 from ..commands_base import ValidationError
+from . import client
 from .ui import BuilderDialog, WeakSignalWrapper
 
 class MemberEditDialog (BuilderDialog):
@@ -67,7 +68,10 @@ class MemberEditDialog (BuilderDialog):
 		m.last_name = self.last_name_entry.get_text ()
 
 	def ok_clicked (self, button):
-		pass
+		if self.member.id is not None:
+			client.member_edit (member=self.member)
+		else:
+			client.member_add (member=self.member)
 
 	def cancel_clicked (self, button):
 		pass

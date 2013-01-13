@@ -2,7 +2,7 @@ import datetime
 from gi.repository import GLib, GObject, Gdk, Gtk
 from ..commands_base import CommandError, ValidationError
 from ..types import Member, TagField
-from .ui import BuilderWindow, WeakFunctionWrapper, WeakSignalWrapper
+from .ui import BuilderWindow, WeakFunctionWrapper, WeakSignalWrapper, format_time
 from . import client
 
 class MainWindowScanner (GObject.GObject):
@@ -134,6 +134,8 @@ class MainWindow (BuilderWindow):
 		WeakSignalWrapper (self.objects.actions_quit_item, "activate",
 			self.actions_quit_activated)
 
+		self.fade_handle = None
+
 	def tick (self):
 
 		self.objects.time_label.set_text (datetime.datetime.now ().strftime (
@@ -149,6 +151,12 @@ class MainWindow (BuilderWindow):
 
 		return True
 
+	def fade_info (self):
+		self.objects.name_label.set_text ("")
+		self.objects.inout_label.set_text ("")
+		self.objects.just_completed_label.set_text ("")
+		self.objects.total_hours_label.set_text ("")
+
 	def scanner_attached (self, scanner):
 		self.objects.upper_label.set_markup ('<span>Scan your ID now.</span>')
 
@@ -163,7 +171,7 @@ class MainWindow (BuilderWindow):
 			return
 
 		try:
-			client.member_scan_in_out (tag=tag)
+			response = client.member_scan_in_out (tag=tag)
 		except CommandError as e:
 			if e.id == "member-not-found":
 				from .member_windows import MemberEditDialog
@@ -172,13 +180,25 @@ class MainWindow (BuilderWindow):
 					tag=tag
 				)
 				dialog.show_all ()
-				dialog.run ()
+				res = dialog.run ()
 				dialog.destroy ()
+				if res > 0:
+					self.scanner_scanned (scanner, tag)
 			else:
 				raise
 			return
 
-		raise 2
+		if self.fade_handle is not None:
+			GLib.source_remove (self.fade_handle)
+		self.fade_handle = GLib.timeout_add (10000, self.fade_info)
+
+		si = response.scanned_in
+		self.objects.name_label.set_text (response.member.name)
+		self.objects.inout_label.set_text (["OUT", "IN"][si])
+		self.objects.just_completed_label.set_text (
+			"" if si else format_time (response.elapsed_hours))
+		self.objects.total_hours_label.set_text (
+			"" if si else format_time (response.total_hours))
 
 	def actions_quit_activated (self, window):
 		self.destroy ()

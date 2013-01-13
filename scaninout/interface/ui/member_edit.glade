@@ -81,7 +81,7 @@
     </child>
     <action-widgets>
       <action-widget response="0">cancel_button</action-widget>
-      <action-widget response="0">ok_button</action-widget>
+      <action-widget response="1">ok_button</action-widget>
     </action-widgets>
   </object>
 </interface>

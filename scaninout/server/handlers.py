@@ -71,6 +71,7 @@ def handle_MemberScanInOut (request, session):
 		raise CommandError ("member-not-found", "Member not found.")
 
 	elapsed_hours = None
+	total_hours = None
 
 	current_shift = (
 		session.query (Shift)
@@ -91,10 +92,13 @@ def handle_MemberScanInOut (request, session):
 		session.add (current_shift)
 		session.flush ()
 		elapsed_hours = current_shift.hours
+		total_hours = member.hours
 	
 	return request.response_class (
+		member = member,
 		scanned_in = (current_shift is None),
 		elapsed_hours = elapsed_hours,
+		total_hours = total_hours,
 	)
 
 @handles (commands.MemberGetShifts)
@@ -112,9 +116,9 @@ def handle_MemberGetShifts (request, session):
 @public
 @handles (commands.MemberCheckTag)
 def handle_MemberCheckTag (request, session):
-	member = session.query (Member).filter (Member.tag == request.tag).first ()
+	cnt = session.query (Member).filter (Member.tag == request.tag).count ()
 	return request.response_class (
-		exists = (member is not None)
+		exists = (cnt > 0)
 	)
 
 ########################################

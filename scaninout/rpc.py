@@ -1,5 +1,5 @@
 from .commands_base import (FieldedObject, StringField,
-	DictField, BoolField, CommandError)
+	DictField, BoolField, Field, CommandError)
 
 class RPCRequest (FieldedObject):
 	command = StringField ()
@@ -7,5 +7,9 @@ class RPCRequest (FieldedObject):
 
 class RPCResponse (FieldedObject):
 	success = BoolField ()
-	fields = DictField (required=False)
+	fields = DictField (
+		keyfield=StringField (),
+		valfield=Field (required=False),
+		required=False
+	)
 	error = CommandError.Field (required=False)

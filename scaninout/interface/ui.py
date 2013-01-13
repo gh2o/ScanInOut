@@ -1,9 +1,18 @@
 import os
+import datetime
 import weakref
 import types
 from gi.repository import Gtk, GObject
 
 UI_LOCATION = os.path.dirname (os.path.realpath (__file__)) + "/ui"
+
+def format_time (hours):
+	secs = int (hours * 3600)
+	return "%d:%02d:%02d" % (
+		secs / 3600,
+		(secs / 60) % 60,
+		secs % 60
+	)
 
 class WeakFunctionWrapper (object):
 
