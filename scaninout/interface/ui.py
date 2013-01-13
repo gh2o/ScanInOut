@@ -35,11 +35,11 @@ class WeakSignalWrapper (object):
 
 	__subfinal = object ()
 
-	def __init__ (self, target, signal, func, final=False):
+	def __init__ (self, target, signal, func, after=False, final=False):
 		self.wrapper = WeakFunctionWrapper (func, self.__subfinal)
 		self.final = final
 		self.targetref = weakref.ref (target)
-		self.handle = target.connect (signal, self)
+		self.handle = [target.connect, target.connect_after][after](signal, self)
 	
 	def __call__ (self, *args, **kwargs):
 		ret = self.wrapper (*args, **kwargs)
@@ -51,7 +51,7 @@ class WeakSignalWrapper (object):
 				target.disconnect (self.handle)
 			return self.final
 
-class BuilderWindow (Gtk.Window):
+class BuilderObject (GObject.GObject):
 
 	ui_file = None
 	ui_name = None
@@ -63,7 +63,7 @@ class BuilderWindow (Gtk.Window):
 		def __getattr__ (self, x):
 			return self.__builder.get_object (x)
 
-	def __new__ (cls):
+	def __new__ (cls, *args, **kwargs):
 		builder = Gtk.Builder ()
 		builder.add_from_file (os.path.join (UI_LOCATION, cls.ui_file))
 		window = builder.get_object (cls.ui_name)
@@ -73,3 +73,9 @@ class BuilderWindow (Gtk.Window):
 
 	def __init__ (self):
 		pass
+
+class BuilderWindow (BuilderObject, Gtk.Window):
+	pass
+
+class BuilderDialog (BuilderObject, Gtk.Dialog):
+	pass

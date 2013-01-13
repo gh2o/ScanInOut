@@ -11,9 +11,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import mapper, relationship, column_property, Query
 
+from .. import settings
 from ..types import MemberInfoField, Member, Shift
-
-EXPIRES_CUTOFF_TIME = 4
 
 metadata = MetaData ()
 
@@ -111,6 +110,8 @@ def local_timestamp_to_epoch (ts):
 def epoch_to_local_timestamp (ts):
 	return func.datetime (ts, 'unixepoch', 'localtime')
 
+cutoff_offset = settings.expires_cutoff_time * 3600
+
 shifts.mapper.add_properties ({
 	"hours": column_property (
 		cast (case (
@@ -124,8 +125,8 @@ shifts.mapper.add_properties ({
 	"expired": column_property (
 		(Shift.end_time == None) &
 		(
-			func.date (epoch_to_local_timestamp (utc_timestamp_to_epoch (func.now ()) - (EXPIRES_CUTOFF_TIME * 3600))) !=
-			func.date (epoch_to_local_timestamp (utc_timestamp_to_epoch (Shift.start_time) - (EXPIRES_CUTOFF_TIME * 3600)))
+			func.date (epoch_to_local_timestamp (utc_timestamp_to_epoch (func.now ()) - cutoff_offset)) !=
+			func.date (epoch_to_local_timestamp (utc_timestamp_to_epoch (Shift.start_time) - cutoff_offset))
 		)
 	),
 })

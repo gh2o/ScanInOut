@@ -3,6 +3,9 @@ from collections import OrderedDict
 import copy
 import datetime
 
+class ValidationError (ValueError):
+	pass
+
 class Field (object):
 
 	actual_type = object
@@ -19,29 +22,40 @@ class Field (object):
 	def clone_default (self):
 		return copy.deepcopy (self.__default)
 
+	def actual_to_base_impl (self, x):
+		return x
+
+	def base_to_actual_impl (self, x):
+		return x
+
 	def actual_to_base (self, x):
+		self.validate (x)
+		if x is not None:
+			x = self.actual_to_base_impl (x)
+			if not isinstance (x, self.base_type):
+				raise TypeError ("actual_to_base_impl must return of type %r" % self.base_type)
 		return x
 
 	def base_to_actual (self, x):
-		return x
-
-	def actual_to_base_validate (self, x):
-		if x is not None:
-			if not isinstance (x, self.actual_type):
-				raise TypeError ("arg to actual_to_base must be of type %r" % self.actual_type)
-			x = self.actual_to_base (x)
-			if not isinstance (x, self.base_type):
-				raise TypeError ("actual_to_base must return of type %r" % self.base_type)
-		return x
-
-	def base_to_actual_validate (self, x):
 		if x is not None:
 			if not isinstance (x, self.base_type):
-				raise TypeError ("input to base_to_actual must be of type %r" % self.base_type)
-			x = self.base_to_actual (x)
-			if not isinstance (x, self.actual_type):
-				raise TypeError ("base_to_actual must return of type %r" % self.actual_type)
+				raise TypeError ("input to base_to_actual_impl must be of type %r" % self.base_type)
+			x = self.base_to_actual_impl (x)
+		self.validate (x)
 		return x
+
+	def validate_impl (self, x):
+		pass
+
+	def validate (self, x):
+		if x is None:
+			if self.required:
+				raise ValidationError ("field cannot be empty or None")
+		else:
+			if not isinstance (x, self.actual_type):
+				raise ValidationError ("field should be of type %r, not %r" %
+					(self.actual_type, type (x)))
+			self.validate_impl (x)
 
 	default_fields = {}
 	@classmethod
@@ -77,14 +91,21 @@ class FloatField (Field):
 class StringField (Field):
 	actual_type = basestring
 	base_type = basestring
+	def __init__ (self, emptyable=True, *args, **kwargs):
+		Field.__init__ (self, *args, **kwargs)
+		self.emptyable = emptyable
+	def validate_impl (self, value):
+		Field.validate_impl (self, value)
+		if not self.emptyable and not value:
+			raise ValidationError ("non-empty string required")
 
 class DateTimeField (Field):
 	FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 	actual_type = datetime.datetime
 	base_type = basestring
-	def actual_to_base (self, x):
+	def actual_to_base_impl (self, x):
 		return x.strftime (self.FORMAT)
-	def base_to_actual (self, x):
+	def base_to_actual_impl (self, x):
 		return datetime.datetime.strptime (x, self.FORMAT)
 
 for f in [BoolField, IntField, FloatField, StringField, DateTimeField]:
@@ -94,70 +115,46 @@ for f in [BoolField, IntField, FloatField, StringField, DateTimeField]:
 class ListField (Field):
 	actual_type = list
 	base_type = list
-	def __init__ (self, subfield=None, **kwargs):
+	def __init__ (self, subfield=Field(), **kwargs):
 		Field.__init__ (self, **kwargs)
 		self.subfield = Field.to_field (subfield)
-	def actual_to_base (self, x):
-		return [self.subfield.actual_to_base_validate (q) for q in x]
-	def base_to_actual (self, x):
-		return [self.subfield.base_to_actual_validate (q) for q in x]
+	def actual_to_base_impl (self, x):
+		return [self.subfield.actual_to_base (q) for q in x]
+	def base_to_actual_impl (self, x):
+		return [self.subfield.base_to_actual (q) for q in x]
+	def validate_impl (self, x):
+		Field.validate_impl (self, x)
+		[self.subfield.validate (q) for q in x]
 
 class DictField (Field):
 	actual_type = dict
 	base_type = dict
-	def __init__ (self, keyfield=basestring, valfield=None, **kwargs):
+	def __init__ (self, keyfield=StringField(), valfield=Field(), **kwargs):
 		Field.__init__ (self, **kwargs)
 		self.keyfield = Field.to_field (keyfield)
 		self.valfield = Field.to_field (valfield)
-	def actual_to_base (self, x):
+	def actual_to_base_impl (self, x):
 		if not x:
 			return {}
 		keys, vals = zip (*(x.iteritems ()))
-		keys = [self.keyfield.actual_to_base_validate (q) for q in keys]
-		vals = [self.valfield.actual_to_base_validate (q) for q in vals]
-		return dict (zip (key, vals))
-	def base_to_actual (self, x):
+		keys = [self.keyfield.actual_to_base (q) for q in keys]
+		vals = [self.valfield.actual_to_base (q) for q in vals]
+		return dict (zip (keys, vals))
+	def base_to_actual_impl (self, x):
 		if not x:
 			return {}
 		keys, vals = zip (*(x.iteritems ()))
-		keys = [self.keyfield.base_to_actual_validate (q) for q in keys]
-		vals = [self.valfield.base_to_actual_validate (q) for q in vals]
-		return dict (zip (key, vals))
+		keys = [self.keyfield.base_to_actual (q) for q in keys]
+		vals = [self.valfield.base_to_actual (q) for q in vals]
+		return dict (zip (keys, vals))
+	def validate_impl (self, x):
+		Field.validate_impl (self, x)
+		[self.keyfield.validate (q) for q in x.iterkeys ()]
+		[self.valfield.validate (q) for q in x.itervalues ()]
 
 for f in [ListField, DictField]:
 	Field.default_fields[f.actual_type] = f ()
 	del f
-
-class FieldContainer (object):
-
-	__slots__ = ["__fielddict", "__data"]
-
-	def __init__ (self, fielddict):
-		self.__data = {}
-		self.__fielddict = fielddict
-		for name, field in fielddict.iteritems ():
-			self.__data[name] = field.clone_default ()
-	
-	def __getattr__ (self, key):
-
-		if key.startswith ("_FieldContainer__"):
-			return object.__getattr__ (self, key)
-
-		return self.__data[key]
-
-	def __setattr__ (self, key, val):
-
-		if key.startswith ("_FieldContainer__"):
-			object.__setattr__ (self, key, val)
-			return
-
-		if key not in self.__fielddict:
-			raise AttributeError ("Key %r not valid in field dictionary." % key)
-		field = self.__fielddict[key]
-		if val is not None and not isinstance (val, field.actual_type):
-			raise ValueError ("Value for %r is not of type %r." % (key, field.actual_type))
-
-		self.__data[key] = val
 
 class FieldedObjectField (Field):
 
@@ -165,24 +162,35 @@ class FieldedObjectField (Field):
 	actual_type = None
 	base_type = dict
 
-	def actual_to_base (self, x):
+	def actual_to_base_impl (self, x):
 		ret = {}
 		for name, field in self.actual_type._fields.iteritems ():
-			ret[name] = field.actual_to_base_validate (getattr (x, name))
+			ret[name] = field.actual_to_base (getattr (x, name))
 		return ret
 
-	def base_to_actual (self, x):
+	def base_to_actual_impl (self, x):
 		kwargs = {}
 		for name, field in self.actual_type._fields.iteritems ():
-			value = field.base_to_actual_validate (x.get (name, field.clone_default ()))
-			if field.required and value is None:
-				raise KeyError ("Required field %r not found." % name)
+			value = field.base_to_actual (x.get (name, field.clone_default ()))
 			kwargs[name] = value
 		return self.actual_type (**kwargs)
+
+	def validate_impl (self, x):
+		Field.validate_impl (self, x)
+		for name, field in self.actual_type._fields.iteritems ():
+			field.validate (getattr (x, name))
 
 class FieldedObjectMeta (type):
 
 	def __init__ (self, name, bases, attrs):
+
+		# check for conflicting names
+		if attrs.get ("__metaclass__") is not type (self):
+			for key in attrs.iterkeys ():
+				if key.startswith ("__") and key.endswith ("__"):
+					continue
+				if key in FieldedObject.__dict__:
+					raise TypeError ("conflicting attribute: %s" % key)
 
 		fields_keys = self._fields_keys = []
 		fields = self._fields = {}
@@ -198,6 +206,7 @@ class FieldedObjectMeta (type):
 		fields_keys.sort (key=lambda k: fields[k].order)
 
 		self.Field = type (name + "Field", (FieldedObjectField,), {"actual_type": self})
+		self._field_instance = self.Field ()
 
 class FieldedObject (object):
 
@@ -219,17 +228,29 @@ class FieldedObject (object):
 		if field is None:
 			raise AttributeError
 
-		if field.required and val is None:
-			raise TypeError ("attribute %r for object %r cannot be None" % (x, self))
-		if val is not None and not isinstance (val, field.actual_type):
-			raise TypeError ("attribute %r must be of type %r, not %r" % (x, field.actual_type, type (val)))
-
 		object.__setattr__ (self, x, val)
 	
-class CommandError (RuntimeError):
-	def __init__ (self, message):
+	def encode_to_base (self):
+		return self._field_instance.actual_to_base (self)
+
+	@classmethod
+	def decode_from_base (cls, x):
+		return cls._field_instance.base_to_actual (x)
+
+	def validate_object (self):
+		self._field_instance.validate (self)
+
+class CommandError (FieldedObject, RuntimeError):
+
+	id = StringField ()
+	message = StringField ()
+
+	def __init__ (self, id, message):
+		FieldedObject.__init__ (self, id=id, message=message)
 		Exception.__init__ (self, message)
-		self.message = message
+
+	def __str__ (self):
+		return "%s [%s]" % (self.message, self.id)
 
 class CommandMeta (type):
 
@@ -253,16 +274,16 @@ class CommandMeta (type):
 		raise TypeError ("cannot create %r instances" % self.__name__)
 
 	def decode_request (self, x):
-		return self.request_field.base_to_actual_validate (x)
+		return self.request_field.base_to_actual (x)
 
 	def encode_request (self, x):
-		return self.request_field.actual_to_base_validate (x)
+		return self.request_field.actual_to_base (x)
 
 	def decode_response (self, x):
-		return self.response_field.base_to_actual_validate (x)
+		return self.response_field.base_to_actual (x)
 
 	def encode_response (self, x):
-		return self.response_field.actual_to_base_validate (x)
+		return self.response_field.actual_to_base (x)
 
 class Command (object):
 

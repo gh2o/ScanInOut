@@ -4,6 +4,7 @@ import sqlalchemy.orm
 
 from ..commands_base import Command, CommandError
 from ..commands import commands
+from ..rpc import RPCRequest, RPCResponse
 from .handlers import handlers
 from .db import metadata as db_metadata
 
@@ -27,73 +28,68 @@ class Server (object):
 			if not raw:
 				break
 
-			ret = {}
-			ferr = CommandError ("Format error.")
+			ret = None
+			ferr = CommandError ("format-error", "Format error.")
 
 			try:
 
 				try:
 					obj = json.loads (raw)
 				except ValueError as e:
-					raise CommandError ("JSON error: " + str (e))
+					raise CommandError ("json-error", "JSON error: " + str (e))
 
-				if not isinstance (obj, dict):
-					raise ferr
+				try:
+					rpcreq = RPCRequest.decode_from_base (obj)
+				except:
+					raise CommandError ("decode-error", "Decode error.")
 
-				command = obj.get ("command")
-				if not isinstance (command, basestring):
-					raise ferr
-
-				fields = obj.get ("fields")
-				if not isinstance (fields, dict):
-					raise ferr
-
-				ret = {
-					"success": True,
-					"fields": self.handle_command (command, fields)
-				}
+				ret = self.handle_request (rpcreq)
 
 			except CommandError as e:
 
-				ret = {
-					"success": False,
-					"message": str (e)
-				}
+				ret = RPCResponse (
+					success = False,
+					error = e,
+				)
 
 			except:
 
-				ret = {
-					"success": False,
-					"message": "Critical error. See log for details."
-				}
+				e = CommandError ("critical-error", "Critical error. See log for details.")
+				ret = RPCResponse (
+					success = False,
+					error = e,
+				)
 
 				import traceback
 				traceback.print_exc ()
 
-			wfile.write (json.dumps (ret) + '\n')
+			wfile.write (json.dumps (ret.encode_to_base ()) + "\n")
 	
-	def handle_command (self, cmdstring, fields):
+	def handle_request (self, rpcreq):
 
-		cmdclass = commands.get (cmdstring)
+		cmdclass = commands.get (rpcreq.command)
 		if not cmdclass:
-			raise CommandError ("Unknown command.")
+			raise CommandError ("unknown-command", "Unknown command.")
 
 		handler = handlers.get (cmdclass)
 		if not handler:
-			raise CommandError ("No handler found for command.")
+			raise CommandError ("no-handler", "No handler found for command.")
 
-		request = cmdclass.decode_request (fields)
+		request = cmdclass.decode_request (rpcreq.fields)
 		response = None
 		session = self.create_session ()
 
 		try:
 			response = handler (request, session)
 			if not isinstance (response, cmdclass.Response):
-				raise CommandError ("Invalid response from handler.")
-			encoded = cmdclass.encode_response (response)
+				raise CommandError ("no-response", "Invalid response from handler.")
+			ret = RPCResponse (
+				success = True,
+				fields = cmdclass.encode_response (response)
+			)
 			session.commit ()
 		except:
 			session.rollback ()
 			raise
 
-		return encoded
+		return ret

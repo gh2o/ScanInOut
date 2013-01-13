@@ -37,7 +37,7 @@ def handle_MemberAdd (request, session):
 def handle_MemberEdit (request, session):
 	member = request.member
 	if member.id is None:
-		raise CommandError ("id must be defined")
+		raise CommandError ("member-no-id", "id must be defined")
 	session.add (member)
 	return request.response_class (member=member)
 
@@ -45,7 +45,7 @@ def handle_MemberEdit (request, session):
 def handle_MemberDelete (request, session):
 	obj = session.query (Member).get (request.id)
 	if obj is None:
-		raise CommandError ("Member not found.")
+		raise CommandError ("member-not-found", "Member not found.")
 	session.delete (obj)
 	return request.response_class ()
 
@@ -53,7 +53,7 @@ def handle_MemberDelete (request, session):
 def handle_MemberGet (request, session):
 	obj = session.query (Member).get (request.id)
 	if obj is None:
-		raise CommandError ("Member not found.")
+		raise CommandError ("member-not-found", "Member not found.")
 	return request.response_class (member=obj)
 
 @handles (commands.MemberGetAll)
@@ -68,7 +68,7 @@ def handle_MemberScanInOut (request, session):
 
 	member = session.query (Member).filter (Member.tag == request.tag).first ()
 	if member is None:
-		raise CommandError ("Member not found.")
+		raise CommandError ("member-not-found", "Member not found.")
 
 	elapsed_hours = None
 
@@ -102,7 +102,7 @@ def handle_MemberGetShifts (request, session):
 
 	member = session.query (Member).get (request.id)
 	if not member:
-		raise CommandError ("Member not found.")
+		raise CommandError ("member-not-found", "Member not found.")
 
 	return request.response_class (
 		hours = member.hours,

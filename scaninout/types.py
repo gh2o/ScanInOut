@@ -1,4 +1,14 @@
-from .commands_base import FieldedObject, IntField, StringField, DateTimeField, DictField
+from .commands_base import (FieldedObject, IntField, StringField,
+	DateTimeField, DictField, ValidationError)
+from . import settings
+
+class TagField (StringField):
+	def __init__ (self):
+		StringField.__init__ (self, emptyable=False)
+	def validate_impl (self, value):
+		StringField.validate_impl (self, value)
+		if not settings.validate_tag (value):
+			raise ValidationError ("invalid tag")
 
 class MemberInfoField (FieldedObject):
 
@@ -8,10 +18,10 @@ class MemberInfoField (FieldedObject):
 class Member (FieldedObject):
 
 	id = IntField (required=False)
-	tag = StringField ()
+	tag = TagField ()
 
-	first_name = StringField ()
-	last_name = StringField ()
+	first_name = StringField (emptyable=False)
+	last_name = StringField (emptyable=False)
 
 	info = DictField (default={})
 

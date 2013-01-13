@@ -26,7 +26,7 @@ def main (args):
 
 	### ERROR HANDLER
 
-	from gi.repository import Gtk, Gdk, Pango
+	from gi.repository import Gtk, Gdk, GLib, Pango
 	import traceback
 
 	old_excepthook = sys.excepthook
@@ -38,6 +38,7 @@ def main (args):
 		tbbuf.set_text ("".join (traceback.format_tb (tb)).rstrip ())
 		tbtv = Gtk.TextView ()
 		tbtv.set_buffer (tbbuf)
+		tbtv.set_editable (False)
 		tbtv.modify_font (Pango.font_description_from_string ("monospace 8"))
 		tbscr = Gtk.ScrolledWindow ()
 		tbscr.add (tbtv)
@@ -54,6 +55,14 @@ def main (args):
 	from ..client import Client
 	global client
 	client = Client ()
+
+	### SCANNER SIMULATOR
+	if True:
+		def scanner_simulate (channel, condition):
+			data = sys.stdin.readline ().strip ()
+			window.scanner.emit ('scan', data)
+			return True
+		GLib.IOChannel (0).add_watch (GLib.IOCondition.IN, scanner_simulate)
 
 	### LOAD AND START APPLICATION
 

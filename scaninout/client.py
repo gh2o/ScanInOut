@@ -4,6 +4,7 @@ import socket
 from . import DEFAULT_SOCKET_PATH
 from . import commands
 from .commands_base import CommandError
+from .rpc import RPCRequest, RPCResponse
 
 def camelize (name):
 	buf = []
@@ -53,10 +54,10 @@ class Client (object):
 	
 	def call (self, cmdclass, request):
 
-		senddata = json.dumps ({
-			"command": cmdclass.__name__,
-			"fields": cmdclass.encode_request (request),
-		})
+		senddata = json.dumps (RPCRequest (
+			command = cmdclass.__name__,
+			fields = cmdclass.encode_request (request)
+		).encode_to_base ())
 
 		try:
 			recvdata = self.__exchange (senddata)
@@ -66,8 +67,7 @@ class Client (object):
 			self.sockfile = sock.makefile ('r+')
 			recvdata = self.__exchange (senddata)
 
-		itm = json.loads (recvdata)
-		if not itm["success"]:
-			raise CommandError ("command error: %s" % itm["message"])
-
-		return cmdclass.decode_response (itm["fields"])
+		rpcres = RPCResponse.decode_from_base (json.loads (recvdata))
+		if not rpcres.success:
+			raise rpcres.error
+		return cmdclass.decode_response (rpcres.fields)

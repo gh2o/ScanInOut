@@ -1,5 +1,7 @@
 import datetime
 from gi.repository import GLib, GObject, Gdk, Gtk
+from ..commands_base import CommandError, ValidationError
+from ..types import Member, TagField
 from .ui import BuilderWindow, WeakFunctionWrapper, WeakSignalWrapper
 from . import client
 
@@ -114,11 +116,12 @@ class MainWindow (BuilderWindow):
 
 		BuilderWindow.__init__ (self)
 
-		self.scanner_detached ()
 		self.scanner = MainWindowScanner (self)
+		self.scanner_detached (self.scanner)
 		WeakSignalWrapper (self.scanner, "attach", self.scanner_attached)
 		WeakSignalWrapper (self.scanner, "detach", self.scanner_detached)
-		WeakSignalWrapper (self.scanner, "scan", self.scanner_scanned)
+		WeakSignalWrapper (self.scanner, "scan", self.scanner_scanned,
+			after=True)
 		self.scanner.enumerate ()
 
 		self.time_format = self.objects.time_label.get_text ()
@@ -142,19 +145,40 @@ class MainWindow (BuilderWindow):
 		except IOError:
 			self.objects.lower_label.set_markup ('<span foreground="red">Cannot connect to server.</span>')
 		else:
-			self.objects.lower_label.set_markup ('Remember to sign out!')
+			self.objects.lower_label.set_markup ('<span>Remember to sign out!</span>')
 
 		return True
 
-	def scanner_attached (self):
-		self.objects.upper_label.set_markup ('Scan your ID now.')
+	def scanner_attached (self, scanner):
+		self.objects.upper_label.set_markup ('<span>Scan your ID now.</span>')
 
-	def scanner_detached (self):
+	def scanner_detached (self, scanner):
 		self.objects.upper_label.set_markup ('<span foreground="red">No scanner found.</span>')
 
-	def scanner_scanned (self, data):
-		print repr (data)
-		pass
+	def scanner_scanned (self, scanner, tag):
+
+		try:
+			TagField ().validate (tag)
+		except ValidationError:
+			return
+
+		try:
+			client.member_scan_in_out (tag=tag)
+		except CommandError as e:
+			if e.id == "member-not-found":
+				from .member_windows import MemberEditDialog
+				dialog = MemberEditDialog (
+					scanner=self.scanner,
+					tag=tag
+				)
+				dialog.show_all ()
+				dialog.run ()
+				dialog.destroy ()
+			else:
+				raise
+			return
+
+		raise 2
 
 	def actions_quit_activated (self, window):
 		self.destroy ()
