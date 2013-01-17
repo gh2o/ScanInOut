@@ -23,6 +23,8 @@ def main (args):
 	)
 	parser.add_option ('-s', '--socket', dest='socket',
 		help="socket path", metavar="SOCKET", default=DEFAULT_SOCKET_PATH)
+	parser.add_option ('-i', '--simulate', dest='simulate',
+		help="simulate scanner", default=False, action="store_true")
 
 	options, args = parser.parse_args (args)
 
@@ -74,7 +76,7 @@ def main (args):
 	scanner = Scanner ()
 
 	### SCANNER SIMULATOR
-	if True:
+	if options.simulate:
 		def scanner_simulate (channel, condition):
 			data = sys.stdin.readline ().strip ()
 			scanner.emit ('scan', data)
