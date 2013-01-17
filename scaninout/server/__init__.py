@@ -14,6 +14,8 @@ def main (args):
 	)
 	parser.add_option ('-s', '--socket', dest='socket',
 		help="socket path", metavar="SOCKET", default=DEFAULT_SOCKET_PATH)
+	parser.add_option ('-e', '--echo', dest='echo',
+		help='echo SQL commands', default=False, action="store_true")
 
 	options, args = parser.parse_args (args)
 	if len (args) < 1:
@@ -30,7 +32,7 @@ def main (args):
 	### BUILD SERVER
 
 	from .server import Server
-	server = Server (dbpath = dbpath)
+	server = Server (dbpath = dbpath, echo = options.echo)
 
 	### BIND TO SOCKET
 

@@ -118,9 +118,9 @@ class Connection (object):
 
 class Server (object):
 
-	def __init__ (self, dbpath):
+	def __init__ (self, dbpath, echo=False):
 		self.dbpath = dbpath
-		self.db = sqlalchemy.create_engine ("sqlite:///" + dbpath, echo=True)
+		self.db = sqlalchemy.create_engine ("sqlite:///" + dbpath, echo=echo)
 		self.create_session = sqlalchemy.orm.sessionmaker (bind=self.db)
 		db_metadata.bind = self.db
 		db_metadata.create_all ()
