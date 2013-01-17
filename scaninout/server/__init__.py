@@ -56,6 +56,7 @@ def main (args):
 	sock.bind (options.socket)
 	sock.listen (16)
 	sock.setblocking (False)
+	os.fchmod (sock.fileno (), 0777)
 
 	### START SERVER
 
