@@ -12,6 +12,10 @@ class MemberEditDialog (BuilderDialog):
 	def __init__ (self, client, member=None, tag=None):
 
 		BuilderDialog.__init__ (self)
+		if member is not None:
+			self.set_title ('Add Member')
+		else:
+			self.set_title ('Edit "%s"' % member.name)
 
 		self.client = client
 		self.member = member or Member ()
