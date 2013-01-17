@@ -16,6 +16,8 @@ def main (args):
 		help="socket path", metavar="SOCKET", default=DEFAULT_SOCKET_PATH)
 	parser.add_option ('-e', '--echo', dest='echo',
 		help='echo SQL commands', default=False, action="store_true")
+	parser.add_option ('-u', '--user', dest='user',
+		help="user to run as", metavar="USER")
 
 	options, args = parser.parse_args (args)
 	if len (args) < 1:
@@ -23,6 +25,14 @@ def main (args):
 		return 1
 
 	dbpath, = args
+
+	### DROP PRIVILEGES
+
+	if options.user is not None:
+		import pwd
+		sp = pwd.getpwnam (options.user)
+		os.setregid (sp.pw_gid, sp.pw_gid)
+		os.setreuid (sp.pw_uid, sp.pw_uid)
 
 	### PATCH GEVENT
 
