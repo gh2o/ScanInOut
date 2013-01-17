@@ -1,11 +1,23 @@
 from .commands_base import (
-	Command, Field, ListField, DictField,
-	StringField, BoolField, IntField, FloatField
+	Command, Field, ListField, DictField, TupleField,
+	StringField, BoolField, IntField, FloatField,
+	DateTimeField
 )
 from .types import MemberInfoField, Member, Shift
 
 class Ping (Command):
 	pass
+
+class AuthenticatedPing (Command):
+	pass
+
+class GenerateNonce (Command):
+	class Response:
+		nonce_hex = StringField ()
+
+class PreloadSignature (Command):
+	class Request:
+		signature_hex = StringField ()
 
 ########################################
 # MEMBER INFO FIELDS                   #
@@ -64,8 +76,11 @@ class MemberGet (Command):
 		member = Member.Field ()
 
 class MemberGetAll (Command):
+	class Request:
+		with_shifts = BoolField (default=False)
 	class Response:
 		members = ListField (Member.Field ())
+		shifts_lists = ListField (ListField (Shift.Field ()), required=False)
 
 class MemberScanInOut (Command):
 	class Request:
@@ -88,6 +103,13 @@ class MemberCheckTag (Command):
 		tag = StringField ()
 	class Response:
 		exists = BoolField ()
+
+class MemberGetSignedIn (Command):
+	class Response:
+		member_shift_pairs = ListField (TupleField (
+			Member.Field (),
+			Shift.Field ()
+		))
 
 ########################################
 # ENUMERATE COMMANDS                   #

@@ -1,140 +1,63 @@
+import time
 import datetime
+import calendar
+from collections import namedtuple
 from gi.repository import GLib, GObject, Gdk, Gtk
 from ..commands_base import CommandError, ValidationError
+from ..client import AuthenticatedClient
 from ..types import Member, TagField
-from .ui import BuilderWindow, WeakFunctionWrapper, WeakSignalWrapper, format_time
-from . import client
+from .ui import BuilderWindow, WeakFunctionWrapper, WeakSignalWrapper, format_duration
+from . import scanner
 
-class MainWindowScanner (GObject.GObject):
-
-	__gsignals__ = {
-		"attach": (GObject.SIGNAL_RUN_FIRST, None, []),
-		"detach": (GObject.SIGNAL_RUN_LAST, None, []),
-		"scan": (GObject.SIGNAL_RUN_LAST, bool, [str], GObject.signal_accumulator_true_handled),
-	}
-
-	def __init__ (self, window):
-
-		GObject.GObject.__init__ (self)
-
-		self.window = window
-		self.gdkwindow = window.get_window ()
-		self.scanners = set ()
-		self.buffer = []
-
-		WeakSignalWrapper (window, "map-event", self.window_mapped)
-		WeakSignalWrapper (window, "unmap-event", self.window_unmapped)
-		WeakSignalWrapper (window, "key-press-event", self.key_pressed)
-		WeakSignalWrapper (window, "key-release-event", self.key_released)
-
-		devman = window.get_display ().get_device_manager ()
-		WeakSignalWrapper (devman, "device-added", self.device_added)
-		WeakSignalWrapper (devman, "device-removed", self.device_removed)
-
-	def enumerate (self):
-		devman = self.window.get_display ().get_device_manager ()
-		for device in devman.list_devices (Gdk.DeviceType.SLAVE):
-			self.device_added (devman, device)
-	
-	@property
-	def attached (self):
-		return len (self.scanners) > 0
-	
-	def window_mapped (self, window, event):
-		self.gdkwindow = window.get_window ()
-		for scanner in self.scanners:
-			self._grab (scanner)
-
-	def window_unmapped (self, window, event):
-		self.gdkwindow = window.get_window ()
-		for scanner in self.scanners:
-			self._ungrab (scanner)
-
-	def key_pressed (self, window, event):
-		if event.get_source_device () in self.scanners:
-			self.process_key (event.string)
-			return True
-		else:
-			return False
-
-	def key_released (self, window, event):
-		if event.get_source_device () in self.scanners:
-			return True
-		else:
-			return False
-
-	def device_added (self, devman, device):
-		if (
-			device.get_source () == Gdk.InputSource.KEYBOARD and
-			device.get_device_type () == Gdk.DeviceType.SLAVE and
-			" Barcode " in device.get_name () and
-			device not in self.scanners
-		):
-			self.scanners.add (device)
-			self._grab (device)
-			if len (self.scanners) == 1:
-				self.emit ("attach")
-
-	def device_removed (self, devman, device):
-		if device in self.scanners:
-			self._ungrab (device)
-			self.scanners.remove (device)
-			if len (self.scanners) == 0:
-				self.emit ("detach")
-
-	def _grab (self, device):
-
-		if self.gdkwindow is None:
-			return
-
-		grabbed = False
-		while not grabbed:
-			device.set_mode (Gdk.InputMode.SCREEN)
-			grabbed = (device.grab (
-				self.gdkwindow, Gdk.GrabOwnership.NONE,
-				False, Gdk.EventMask.KEY_PRESS_MASK | Gdk.EventMask.KEY_RELEASE_MASK,
-				None, 0
-			) == Gdk.GrabStatus.SUCCESS)
-		Gtk.device_grab_add (self.window, device, False)
-
-	def _ungrab (self, device):
-		pass
-
-	def process_key (self, key):
-		if key in ['\r', '\n', '\r\n']:
-			self.emit ("scan", ''.join (self.buffer))
-			del self.buffer[:]
-		else:
-			self.buffer.append (key)
-	
 class MainWindow (BuilderWindow):
 
 	ui_file = "main.glade"
 	ui_name = "window"
 
-	def __init__ (self):
+	SignedInRow = namedtuple ('SignedInRow', [
+		'id', 'name',
+		'start_time_epoch', 'duration_seconds',
+		'start_time_text', 'duration_text'
+	])
+
+	def __init__ (self, client):
 
 		BuilderWindow.__init__ (self)
+		self.client = client
 
-		self.scanner = MainWindowScanner (self)
-		self.scanner_detached (self.scanner)
-		WeakSignalWrapper (self.scanner, "attach", self.scanner_attached)
-		WeakSignalWrapper (self.scanner, "detach", self.scanner_detached)
-		WeakSignalWrapper (self.scanner, "scan", self.scanner_scanned,
+		self.scanner_detached (scanner)
+		WeakSignalWrapper (scanner, "attach", self.scanner_attached)
+		WeakSignalWrapper (scanner, "detach", self.scanner_detached)
+		WeakSignalWrapper (scanner, "scan", self.scanner_scanned,
 			after=True)
-		self.scanner.enumerate ()
+
+		self.objects.signedin_liststore.set_sort_column_id (
+			self.SignedInRow._fields.index ("name"),
+			Gtk.SortType.ASCENDING
+		)
 
 		self.time_format = self.objects.time_label.get_text ()
-		GLib.idle_add (lambda: self.tick () and False)
-		GLib.timeout_add (250, WeakFunctionWrapper (self.tick))
-
 		self.objects.name_label.set_text ("")
 		self.objects.inout_label.set_text ("")
 
+		WeakSignalWrapper (self.objects.actions_manage_item, "activate",
+			self.actions_manage_activated)
 		WeakSignalWrapper (self.objects.actions_quit_item, "activate",
 			self.actions_quit_activated)
 
 		self.fade_handle = None
+
+		self.signedin_scroll_handle = None
+		WeakSignalWrapper (self.objects.signedin_vadjustment, "value-changed",
+			self.signedin_list_scrolled)
+
+		GLib.idle_add (lambda: self.update_signedin_list () and False)
+		GLib.timeout_add (5000, WeakFunctionWrapper (self.update_signedin_list))
+		GLib.idle_add (lambda: self.refresh_signedin_list () and False)
+		GLib.timeout_add (500, WeakFunctionWrapper (self.refresh_signedin_list))
+
+		self.tick ()
+		GLib.timeout_add (250, WeakFunctionWrapper (self.tick))
 
 	def tick (self):
 
@@ -143,11 +66,11 @@ class MainWindow (BuilderWindow):
 		))
 
 		try:
-			client.ping ()
+			self.client.ping ()
 		except IOError:
 			self.objects.lower_label.set_markup ('<span foreground="red">Cannot connect to server.</span>')
 		else:
-			self.objects.lower_label.set_markup ('<span>Remember to sign out!</span>')
+			self.objects.lower_label.set_markup ('<span>Remember to scan out!</span>')
 
 		return True
 
@@ -156,6 +79,106 @@ class MainWindow (BuilderWindow):
 		self.objects.inout_label.set_text ("")
 		self.objects.just_completed_label.set_text ("")
 		self.objects.total_hours_label.set_text ("")
+	
+	def signedin_list_scrolled (self, adj):
+		if self.signedin_scroll_handle is not None:
+			return
+		self.signedin_scroll_handle = \
+			GLib.timeout_add (50, self.signedin_list_scrolled_timeout)
+	
+	def signedin_list_scrolled_timeout (self):
+		self.refresh_signedin_list ()
+		self.signedin_scroll_handle = None
+	
+	def update_signedin_list (self):
+
+		try:
+			store = self.objects.signedin_liststore
+			response = self.client.member_get_signed_in ()
+		except IOError:
+			return True
+
+		old_dict = dict (
+			(row.id, None)
+				for row in (self.SignedInRow (*x) for x in store)
+		)
+		new_dict = dict (
+			(member.id, (member, shift))
+				for member, shift in response.member_shift_pairs
+		)
+
+		old_ids = set (old_dict.keys ())
+		new_ids = set (new_dict.keys ())
+
+		# get out if nothing changed
+
+		if old_ids == new_ids:
+			return True
+
+		# something did change
+
+		added_ids = new_ids - old_ids
+		removed_ids = old_ids - new_ids
+
+		# remove old ids
+		for id in removed_ids:
+			row = (x for x in store if self.SignedInRow (*x).id == id).next ()
+			store.remove (row.iter)
+
+		# add new ones
+		for id in added_ids:
+			member, shift = new_dict[id]
+			store.append (self.SignedInRow (
+				id = member.id,
+				name = "",
+				start_time_epoch = 0,
+				duration_seconds = 0,
+				start_time_text = "",
+				duration_text = "",
+			))
+
+		# update them all
+		for itrow in store:
+			row = self.SignedInRow (*itrow)
+			member, shift = new_dict[row.id]
+			ste = calendar.timegm (shift.start_time.timetuple ())
+			newrow = row._replace (
+				name = member.name,
+				start_time_epoch = ste,
+				start_time_text = datetime.datetime.fromtimestamp (ste)
+					.strftime ('%I:%M:%S %p'),
+			)
+			if row != newrow:
+				store.set_row (itrow.iter, newrow)
+
+		return True
+	
+	def refresh_signedin_list (self):
+		store = self.objects.signedin_liststore
+		for itrow in self.visible_signedin_list_rows ():
+			row = self.SignedInRow (*itrow)
+			secs = time.time () - row.start_time_epoch
+			store.set_row (itrow.iter, row._replace (
+				duration_seconds = secs,
+				duration_text = format_duration (secs / 3600.),
+			))
+		return True
+
+	def visible_signedin_list_rows (self):
+
+		rg = self.objects.signedin_treeview.get_visible_range ()
+		if rg is None:
+			return
+
+		start_path, end_path = rg
+		store = self.objects.signedin_liststore
+
+		row = store[store.get_iter (start_path)]
+		while True:
+			yield row
+			row = row.next
+			if row is None or row.path > end_path:
+				break
 
 	def scanner_attached (self, scanner):
 		self.objects.upper_label.set_markup ('<span>Scan your ID now.</span>')
@@ -171,19 +194,11 @@ class MainWindow (BuilderWindow):
 			return
 
 		try:
-			response = client.member_scan_in_out (tag=tag)
+			response = self.client.member_scan_in_out (tag=tag)
 		except CommandError as e:
 			if e.id == "member-not-found":
-				from .member_windows import MemberEditDialog
-				dialog = MemberEditDialog (
-					scanner=self.scanner,
-					tag=tag
-				)
-				dialog.show_all ()
-				res = dialog.run ()
-				dialog.destroy ()
-				if res > 0:
-					self.scanner_scanned (scanner, tag)
+				# don't block while stdin is held by glib
+				GLib.idle_add (self.scanner_scanned_add_member, tag)
 			else:
 				raise
 			return
@@ -196,9 +211,61 @@ class MainWindow (BuilderWindow):
 		self.objects.name_label.set_text (response.member.name)
 		self.objects.inout_label.set_text (["OUT", "IN"][si])
 		self.objects.just_completed_label.set_text (
-			"" if si else format_time (response.elapsed_hours))
+			"" if si else format_duration (response.elapsed_hours))
 		self.objects.total_hours_label.set_text (
-			"" if si else format_time (response.total_hours))
+			"" if si else format_duration (response.total_hours))
 
-	def actions_quit_activated (self, window):
+		self.update_signedin_list ()
+
+		return True
+
+	def scanner_scanned_add_member (self, tag):
+
+		from .member_windows import MemberEditDialog
+		dialog = MemberEditDialog (client=self.client, tag=tag)
+		dialog.show_all ()
+		res = dialog.run ()
+		dialog.destroy ()
+
+		if res == Gtk.ResponseType.OK:
+			self.scanner_scanned (scanner, tag)
+
+	def actions_manage_activated (self, item):
+
+		from .management_windows import (
+			ManagementPasswordDialog, ManagementMainDialog)
+		dialog = ManagementPasswordDialog ()
+		dialog.set_transient_for (self)
+		dialog.show_all ()
+
+		authclient = None
+		while True:
+
+			res = dialog.run ()
+			if res != Gtk.ResponseType.OK:
+				break
+
+			try:
+				authclient = AuthenticatedClient (password=dialog.password)
+				authclient.authenticated_ping ()
+			except CommandError as e:
+				authclient = None
+				if e.id != "invalid-signature":
+					raise
+			else:
+				break
+
+			dialog.mark_incorrect ()
+
+		dialog.destroy ()
+		if authclient is None:
+			return
+
+		dialog = ManagementMainDialog (client=authclient)
+		dialog.set_transient_for (self)
+		dialog.show_all ()
+		dialog.run ()
+		dialog.destroy ()
+
+	def actions_quit_activated (self, item):
 		self.destroy ()

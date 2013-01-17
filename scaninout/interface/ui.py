@@ -6,7 +6,10 @@ from gi.repository import Gtk, GObject
 
 UI_LOCATION = os.path.dirname (os.path.realpath (__file__)) + "/ui"
 
-def format_time (hours):
+def format_date (dt):
+	return dt.strftime ("%m/%d/%Y %I:%M:%S %p")
+
+def format_duration (hours):
 	secs = int (hours * 3600)
 	return "%d:%02d:%02d" % (
 		secs / 3600,
@@ -70,7 +73,10 @@ class BuilderObject (GObject.GObject):
 		def __init__ (self, builder):
 			self.__builder = builder
 		def __getattr__ (self, x):
-			return self.__builder.get_object (x)
+			ret = self.__builder.get_object (x)
+			if ret is None:
+				raise AttributeError ("no object %r" % x)
+			return ret
 
 	def __new__ (cls, *args, **kwargs):
 		builder = Gtk.Builder ()

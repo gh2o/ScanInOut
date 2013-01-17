@@ -5,7 +5,7 @@ from sqlalchemy import (
 	MetaData, Table, Column,
 	ForeignKey, Float, Integer, String, DateTime, LargeBinary,
 	TypeDecorator,
-	extract, cast, case, func,
+	extract, cast, case, func, select,
 	event
 )
 from sqlalchemy.engine import Engine
@@ -77,7 +77,8 @@ members = build_table ("members", Member,
 		"tag": {"unique": True, "index": True},
 	},
 	properties={
-		"shifts": relationship (Shift, backref="member", lazy="select")
+		"shifts": relationship (Shift, backref="member", lazy="select", cascade="delete"),
+		"shifts_dynamic": relationship (Shift, lazy="dynamic"),
 	},
 )
 
@@ -120,7 +121,7 @@ shifts.mapper.add_properties ({
 				utc_timestamp_to_epoch (Shift.end_time) -
 				utc_timestamp_to_epoch (Shift.start_time)
 			) / 3600.
-		), Float ())
+		), Float ()),
 	),
 	"expired": column_property (
 		(Shift.end_time == None) &
@@ -131,8 +132,14 @@ shifts.mapper.add_properties ({
 	),
 })
 
+shifts.mapper.add_property ("active", column_property (
+	(Shift.expired == False) & (Shift.end_time == None)
+))
+
 members.mapper.add_property ("hours", column_property (
-	Query ([func.coalesce (func.sum (Shift.hours), 0.0)]).join (Member).label ("hours")
+	select ([func.coalesce (func.sum (Shift.hours), 0.0)])
+		.where (Member.shifts.property.primaryjoin)
+		.correlate (members)
 ))
 
 @event.listens_for (Engine, "connect")

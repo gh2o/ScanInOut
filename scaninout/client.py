@@ -1,3 +1,4 @@
+import binascii
 import json
 import socket
 
@@ -5,6 +6,7 @@ from . import DEFAULT_SOCKET_PATH
 from . import commands
 from .commands_base import CommandError
 from .rpc import RPCRequest, RPCResponse
+from .utils import generate_pwhash, generate_signature
 
 def camelize (name):
 	buf = []
@@ -47,27 +49,66 @@ class Client (object):
 			raise AttributeError
 		return ClientFunction (self, cmdclass)
 	
-	def __exchange (self, data):
+	def __exchange_sub (self, data):
+
 		self.sockfile.write (data + "\n")
 		self.sockfile.flush ()
-		return self.sockfile.readline ()
-	
-	def call (self, cmdclass, request):
 
-		senddata = json.dumps (RPCRequest (
-			command = cmdclass.__name__,
-			fields = cmdclass.encode_request (request)
-		).encode_to_base ())
+		ret = self.sockfile.readline ()
+		if ret[-1] == '\n':
+			ret = ret[:-1]
+		if ret[-1] == '\r':
+			ret = ret[:-1]
+
+		return ret
+
+	def exchange (self, data):
 
 		try:
-			recvdata = self.__exchange (senddata)
+			return self.__exchange_sub (data)
 		except:
 			sock = socket.socket (socket.AF_UNIX, socket.SOCK_STREAM, 0)
 			sock.connect (self.sockpath)
 			self.sockfile = sock.makefile ('r+')
-			recvdata = self.__exchange (senddata)
+			return self.__exchange_sub (data)
 
+	def call (self, cmdclass, request):
+
+		senddata = self.encode_request_to_json (cmdclass, request)
+		recvdata = self.exchange (senddata)
+		ret = self.decode_request_from_json (cmdclass, recvdata)
+		return ret
+
+	def encode_request_to_json (self, cmdclass, request):
+		return json.dumps (RPCRequest (
+			command = cmdclass.__name__,
+			fields = cmdclass.encode_request (request)
+		).encode_to_base ())
+	
+	def decode_request_from_json (self, cmdclass, recvdata):
 		rpcres = RPCResponse.decode_from_base (json.loads (recvdata))
 		if not rpcres.success:
 			raise rpcres.error
 		return cmdclass.decode_response (rpcres.fields)
+
+class AuthenticatedClient (Client):
+	
+	__slots__ = ["pwhash"]
+
+	def __init__ (self, password, **kwargs):
+		Client.__init__ (self, **kwargs)
+		self.pwhash = generate_pwhash (password)
+	
+	def call (self, cmdclass, request):
+
+		senddata = self.encode_request_to_json (cmdclass, request)
+
+		GN = commands.GenerateNonce
+		nonce = binascii.unhexlify (Client.call (self, GN, GN.Request ()).nonce_hex)
+		signature = generate_signature (self.pwhash, nonce, senddata)
+		PS = commands.PreloadSignature
+		Client.call (self, PS, PS.Request (signature_hex=binascii.hexlify (signature)))
+
+		recvdata = self.exchange (senddata)
+		ret = self.decode_request_from_json (cmdclass, recvdata)
+		return ret

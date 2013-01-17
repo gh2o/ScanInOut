@@ -1,3 +1,6 @@
+import time
+import datetime
+import calendar
 from .commands_base import (FieldedObject, IntField, StringField,
 	DateTimeField, DictField, ValidationError)
 from . import settings
@@ -36,3 +39,22 @@ class Shift (FieldedObject):
 	member_id = IntField ()
 	start_time = DateTimeField ()
 	end_time = DateTimeField (required=False)
+
+	@property
+	def hours (self):
+		if isinstance (self, type):
+			raise TypeError
+		if self.end_time is None:
+			return 0.0
+		gm = lambda dt: calendar.timegm (dt.timetuple ())
+		return (gm (self.end_time) - gm (self.start_time)) / 3600.0
+
+	@property
+	def expired (self):
+		if isinstance (self, type):
+			raise TypeError
+		if self.end_time is not None:
+			return False
+		ect = settings.expires_cutoff_time
+		dt = lambda t: datetime.datetime.fromtimestamp (t - ect * 3600).date ()
+		return dt (time.time ()) == dt (calendar.timegm (self.start_time.timetuple ()))

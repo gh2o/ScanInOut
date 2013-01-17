@@ -155,6 +155,24 @@ class DictField (Field):
 		[self.keyfield.validate (q) for q in x.iterkeys ()]
 		[self.valfield.validate (q) for q in x.itervalues ()]
 
+class TupleField (Field):
+	actual_type = tuple
+	base_type = list
+	def __init__ (self, *subfields, **kwargs):
+		Field.__init__ (self, **kwargs)
+		self.subfields = subfields
+	def actual_to_base_impl (self, x):
+		if len (x) != len (self.subfields):
+			raise ValueError ("length of tuple should be %d but is %d", len (self.subfields), len (x))
+		return list (field.actual_to_base (q) for field, q in zip (self.subfields, x))
+	def base_to_actual_impl (self, x):
+		if len (x) != len (self.subfields):
+			raise ValueError ("length of tuple should be %d but is %d", len (self.subfields), len (x))
+		return tuple (field.base_to_actual (q) for field, q in zip (self.subfields, x))
+	def validate_impl (self, x):
+		Field.validate_impl (self, x)
+		[field.validate (q) for field, q in zip (self.subfields, x)]
+
 for f in [ListField, DictField]:
 	Field.default_fields[f.actual_type] = f ()
 	del f

@@ -6,20 +6,26 @@
     <property name="can_focus">False</property>
     <property name="stock">gtk-preferences</property>
   </object>
-  <object class="GtkListStore" id="liststore1">
+  <object class="GtkListStore" id="signedin_liststore">
     <columns>
+      <!-- column-name id -->
+      <column type="gint"/>
       <!-- column-name name -->
       <column type="gchararray"/>
+      <!-- column-name start_time_epoch -->
+      <column type="guint64"/>
+      <!-- column-name duration_seconds -->
+      <column type="guint64"/>
       <!-- column-name start_time_text -->
       <column type="gchararray"/>
       <!-- column-name duration_text -->
       <column type="gchararray"/>
-      <!-- column-name id -->
-      <column type="gint"/>
     </columns>
   </object>
-  <object class="GtkTreeModelSort" id="treemodelsort1">
-    <property name="model">liststore1</property>
+  <object class="GtkAdjustment" id="signedin_vadjustment">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
   </object>
   <object class="GtkWindow" id="window">
     <property name="width_request">900</property>
@@ -86,6 +92,7 @@
             <property name="margin_left">2</property>
             <property name="margin_right">2</property>
             <property name="position">200</property>
+            <property name="position_set">True</property>
             <child>
               <object class="GtkAlignment" id="alignment1">
                 <property name="visible">True</property>
@@ -355,42 +362,58 @@
                 <property name="can_focus">True</property>
                 <property name="show_border">False</property>
                 <child>
-                  <object class="GtkScrolledWindow" id="scrolledwindow1">
+                  <object class="GtkScrolledWindow" id="signedin_scrolledwindow">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
+                    <property name="vadjustment">signedin_vadjustment</property>
+                    <property name="hscrollbar_policy">never</property>
                     <property name="vscrollbar_policy">always</property>
                     <child>
-                      <object class="GtkTreeView" id="treeview1">
+                      <object class="GtkTreeView" id="signedin_treeview">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="model">liststore1</property>
+                        <property name="model">signedin_liststore</property>
+                        <property name="search_column">1</property>
                         <child internal-child="selection">
                           <object class="GtkTreeSelection" id="treeview-selection1"/>
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn" id="treeviewcolumn1">
+                            <property name="resizable">True</property>
                             <property name="title" translatable="yes">Name</property>
+                            <property name="expand">True</property>
+                            <property name="sort_column_id">1</property>
                             <child>
                               <object class="GtkCellRendererText" id="cellrenderertext1"/>
                               <attributes>
-                                <attribute name="text">0</attribute>
+                                <attribute name="text">1</attribute>
                               </attributes>
                             </child>
                           </object>
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn" id="treeviewcolumn2">
+                            <property name="resizable">True</property>
                             <property name="title" translatable="yes">Start Time</property>
+                            <property name="sort_column_id">2</property>
                             <child>
                               <object class="GtkCellRendererText" id="cellrenderertext2"/>
+                              <attributes>
+                                <attribute name="text">4</attribute>
+                              </attributes>
                             </child>
                           </object>
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn" id="treeviewcolumn3">
+                            <property name="resizable">True</property>
                             <property name="title" translatable="yes">Duration</property>
+                            <property name="sort_column_id">3</property>
                             <child>
                               <object class="GtkCellRendererText" id="cellrenderertext3"/>
+                              <attributes>
+                                <attribute name="text">5</attribute>
+                              </attributes>
                             </child>
                           </object>
                         </child>

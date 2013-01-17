@@ -3,6 +3,13 @@ import sys
 
 client = None
 
+def patch ():
+
+	from gi.overrides import Gtk
+	def TreeModelRow_iter (self):
+		return iter (self[0:self.model.get_n_columns()])
+	Gtk.TreeModelRow.__iter__ = TreeModelRow_iter
+
 def main (args):
 	
 	### PARSE OPTIONS
@@ -50,24 +57,43 @@ def main (args):
 		dialog.destroy ()
 	sys.excepthook = new_excepthook
 
-	### SET UP CLIENT AND PING
+	### MONKEY PATCH
+	
+	patch ()
+
+	### SET UP CLIENT
 
 	from ..client import Client
 	global client
 	client = Client ()
 
+	### SET UP SCANNER
+
+	from .scanner import Scanner
+	global scanner
+	scanner = Scanner ()
+
 	### SCANNER SIMULATOR
 	if True:
 		def scanner_simulate (channel, condition):
 			data = sys.stdin.readline ().strip ()
-			window.scanner.emit ('scan', data)
+			scanner.emit ('scan', data)
 			return True
-		GLib.IOChannel (0).add_watch (GLib.IOCondition.IN, scanner_simulate)
+		iochannel = GLib.IOChannel (0)
+		iochannel.add_watch (GLib.IOCondition.IN, scanner_simulate)
 
-	### LOAD AND START APPLICATION
+	### SET UP WINDOW
 
 	from .main_window import MainWindow
-	window = MainWindow ()
+	window = MainWindow (client)
 	window.connect ("destroy", lambda win: Gtk.main_quit ())
 	window.show_all ()
+
+	### ENUMERATE SCANNER
+
+	scanner.attach_to_window (window)
+	scanner.enumerate ()
+
+	### START APPLICATION
+
 	Gtk.main ()
