@@ -1,0 +1,19 @@
+#!/usr/bin/env python2
+
+import binascii
+import sys
+from scaninout.utils import generate_pwhash
+from getpass import getpass
+
+while True:
+
+	one = getpass ("Password to hash: ")
+	two = getpass ("Retype it: ")
+
+	if one != two:
+		print >>sys.stderr, "Passwords don't match."
+		continue
+
+	ph = generate_pwhash (one)
+	print 'password_hash_hex = %r' % binascii.hexlify (ph)
+	break
