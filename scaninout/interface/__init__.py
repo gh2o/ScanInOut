@@ -25,6 +25,8 @@ def main (args):
 		help="socket path", metavar="SOCKET", default=DEFAULT_SOCKET_PATH)
 	parser.add_option ('-i', '--simulate', dest='simulate',
 		help="simulate scanner", default=False, action="store_true")
+	parser.add_option ('-f', '--fullscreen', dest='fullscreen',
+		help="run in fullscreen", default=False, action="store_true")
 
 	options, args = parser.parse_args (args)
 
@@ -90,6 +92,8 @@ def main (args):
 	window = MainWindow (client)
 	window.connect ("destroy", lambda win: Gtk.main_quit ())
 	window.show_all ()
+	if options.fullscreen:
+		window.fullscreen ()
 
 	### ENUMERATE SCANNER
 
