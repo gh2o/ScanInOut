@@ -1,3 +1,7 @@
+import math
+import datetime
+import time
+import csv
 import textwrap
 import calendar
 from collections import namedtuple
@@ -6,6 +10,75 @@ from ..utils import escape_xml
 from .ui import BuilderDialog, WeakSignalWrapper, format_duration, format_date
 from .member_windows import MemberEditDialog
 
+class Exporter (object):
+	def plain_writer (self, fd):
+		return csv.writer (fd)
+	def dict_writer (self, fd, fields):
+		return csv.DictWriter (fd, fields)
+	def export (self, client, filename):
+		with open (filename, "w") as fd:
+			self.export_impl (client, fd)
+
+class TotalHoursExporter (Exporter):
+
+	def export_impl (self, client, fd):
+
+		writer = self.plain_writer (fd)
+		writer.writerow (["First Name", "Last Name", "Hours", "Formatted Hours"])
+
+		rp = client.member_get_all (with_shifts=True)
+		for member, shifts in zip (rp.members, rp.shifts_lists):
+			hours = sum (s.hours for s in shifts)
+			writer.writerow ([
+				member.first_name,
+				member.last_name,
+				hours,
+				format_duration (hours)
+			])
+
+class WeeklyExporter (Exporter):
+
+	def export_impl (self, client, fd):
+
+		num_weeks = 100
+		week_letters = 'SMTWTFS'
+
+		# get start of week
+		weekstart = datetime.datetime.now ()
+		while weekstart.weekday () != 6: # make it sunday
+			weekstart -= datetime.timedelta (days=1)
+		weekstart = weekstart.replace (hour=0, minute=0, second=0, microsecond=0)
+		weekstartepoch = time.mktime (weekstart.timetuple ())
+
+		week = datetime.timedelta (days = 7)
+		cols = ['First Name', 'Last Name']
+		for bk in xrange (num_weeks):
+			cols.append ((weekstart - bk * week).strftime ('Week of %m/%d/%Y'))
+
+		writer = self.plain_writer (fd)
+		writer.writerow (cols)
+
+		rp = client.member_get_all (with_shifts=True)
+		for member, shifts in zip (rp.members, rp.shifts_lists):
+			dates = set (
+				datetime.datetime.fromtimestamp (
+					calendar.timegm (s.start_time.timetuple ())
+				).date () for s in shifts
+			)
+			row = [member.first_name, member.last_name]
+			rvals = [['-'] * 7 for _ in xrange (num_weeks)]
+			for dt in dates:
+				diff = weekstartepoch - time.mktime (dt.timetuple ())
+				# round up to nearest week
+				weekindex = int (math.ceil (float (diff) / (60 * 60 * 24 * 7)))
+				if weekindex >= num_weeks:
+					continue
+				# set rvals with weekday
+				wd = (dt.weekday () + 1) % 7 # convert to Sunday = 0
+				rvals[weekindex][wd] = week_letters[wd]
+			row.extend (''.join (rval) for rval in rvals)
+			writer.writerow (row)
+				
 class ManagementPasswordDialog (BuilderDialog):
 
 	ui_file = 'management_password.glade'
@@ -55,6 +128,8 @@ class ManagementMainDialog (BuilderDialog):
 		BuilderDialog.__init__ (self)
 		self.client = client
 
+		# Member
+
 		self.store = self.objects.members_liststore
 		self.store.set_sort_column_id (
 			self.MemberRow._fields.index ("first_name"),
@@ -74,6 +149,10 @@ class ManagementMainDialog (BuilderDialog):
 		WeakSignalWrapper (self.objects.delete_button, "clicked", self.delete_clicked)
 
 		WeakSignalWrapper (self.objects.members_treeview, "row-activated", self.row_activated)
+
+		# Export
+
+		WeakSignalWrapper (self.objects.export_button, "clicked", self.export_clicked)
 	
 	def get_selected_member (self):
 
@@ -193,3 +272,33 @@ class ManagementMainDialog (BuilderDialog):
 	
 	def row_activated (self, tv):
 		self.edit_clicked (None)
+	
+	def export_clicked (self, button):
+
+		exporter = None
+		if self.objects.total_hours_radio.get_active ():
+			exporter = TotalHoursExporter ()
+		elif self.objects.weekly_attendance_radio.get_active ():
+			exporter = WeeklyExporter ()
+
+		if exporter is None:
+			return
+
+		dialog = Gtk.FileChooserDialog (
+			title = "Export",
+			parent = self,
+			action = Gtk.FileChooserAction.SAVE,
+			buttons = [
+				Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+				Gtk.STOCK_SAVE, Gtk.ResponseType.OK
+			]
+		)
+		dialog.set_local_only (True)
+		dialog.set_select_multiple (False)
+		res = dialog.run ()
+		fn = dialog.get_filename ()
+
+		if res == Gtk.ResponseType.OK:
+			exporter.export (self.client, fn)
+
+		dialog.destroy ()
