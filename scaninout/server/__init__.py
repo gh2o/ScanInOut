@@ -18,6 +18,8 @@ def main (args):
 		help='echo SQL commands', default=False, action="store_true")
 	parser.add_option ('-u', '--user', dest='user',
 		help="user to run as", metavar="USER")
+	parser.add_option ('-c', '--config', dest='config',
+		help="configuration .py file", metavar="CONFIG")
 
 	options, args = parser.parse_args (args)
 	if len (args) < 1:
@@ -38,6 +40,12 @@ def main (args):
 
 	from gevent import monkey
 	monkey.patch_all ()
+
+	### CONFIGURE SETTINGS
+
+	if options.config is not None:
+		from .. import settings
+		settings.configure (options.config)
 
 	### BUILD SERVER
 
